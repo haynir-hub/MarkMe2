@@ -1,0 +1,100 @@
+=== 🔍 Debug: בדיקת מעקב אחרי שחקנית ===
+
+## הבעיה:
+הסימון נשאר במקום קבוע ולא עוקב אחרי השחקנית.
+
+## מה הוספתי:
+✅ Debug logging ב-TrackingThread
+✅ Debug logging ב-_show_frame  
+✅ Debug logging ב-draw_all_markers
+✅ Debug logging ב-get_bbox_at_frame
+✅ סיכום מפורט של tracking results אחרי tracking
+
+---
+
+## מה לעשות:
+
+1. **סגור את התוכנה**
+
+2. **הפעל מחדש:**
+   ```
+   לחץ כפול על: run.bat
+   ```
+
+3. **טען וידאו**
+
+4. **סמן שחקנית** (Add Player Marker)
+
+5. **לחץ על "Start Tracking"**
+   - המתן לסיום
+
+6. **לאחר סיום הTracking, נווט בין פריימים:**
+   - לחץ על "Next Frame" מספר פעמים
+   - שים לב האם הסימון עוקב או נשאר במקום
+
+7. **העתק את כל הפלט מ-PowerShell:**
+   - Ctrl+A
+   - Enter
+   - שלח לי
+
+---
+
+## מה אני מחפש:
+
+### בזמן Tracking:
+```
+Initializing tracker for player 1 at frame 0
+Player 1 initialized at frame 0, bbox=(100, 200, 80, 120)
+Frame 10: Player 1 bbox=(105, 202, 80, 120)
+Frame 20: Player 1 bbox=(110, 205, 80, 120)
+...
+
+=== Tracking Complete ===
+Player 1: 150 frames tracked
+  First 3 frames: [0, 1, 2]
+  Last 3 frames: [147, 148, 149]
+  Frame 0 bbox: (100, 200, 80, 120)
+  Frame 10 bbox: (105, 202, 80, 120)
+  Frame 20 bbox: (110, 205, 80, 120)
+=========================
+```
+
+**זה אומר שה-tracking עובד! ✅**
+
+### בזמן ניווט (אחרי tracking):
+```
+_show_frame: Displaying frame 5 with 1 players
+Player 1: stored_bbox at frame 5 = (103, 201, 80, 120)
+draw_all_markers: Drawing 1 players
+  Player 1: bbox=(103, 201, 80, 120), style=arrow
+```
+
+**זה אומר שה-bbox משתנה בין פריימים! ✅**
+
+### אם הבעיה:
+```
+Player 1: stored_bbox at frame 5 = (100, 200, 80, 120)
+Player 1: stored_bbox at frame 10 = (100, 200, 80, 120)
+Player 1: stored_bbox at frame 15 = (100, 200, 80, 120)
+```
+
+**אותו bbox! ❌ ה-tracker לא עוקב!**
+
+---
+
+## אפשרויות לבעיה:
+
+### בעיה 1: Tracker לא מעודכן
+אם הbbox לא משתנה בכלל → בעיה ב-tracker.update()
+
+### בעיה 2: Tracking Results לא נשמרים
+אם יש tracking אבל ה-bbox לא משתנה בניווט → בעיה ב-tracking_results
+
+### בעיה 3: Draw לא מקבל bbox נכון
+אם tracking_results נכון אבל draw מקבל bbox קבוע → בעיה ב-_show_frame
+
+---
+
+**נסה עכשיו ושלח לי את הפלט המלא! 🔍**
+
+

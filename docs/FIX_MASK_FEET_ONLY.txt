@@ -1,0 +1,111 @@
+=== 🔥 FIX - Mask חותך רק את הרגליים! ===
+
+## ❌ הבעיה:
+
+**המשתמש דיווח:**
+"כל המאסקים שעשית חתכו הרבה יותר מדי"
+"צריכים שיהיו חיתוכים רק את מה שהרגליים כביכול מסתירות"
+"זה נראה רע מאוד עכשיו"
+
+**הבעיה:**
+ה-mask הסתיר את כל ה-bbox (כל הגוף), אבל החישוק נמצא על הריצפה - רק הרגליים צריכות להסתיר אותו!
+
+---
+
+## ✅ התיקון:
+
+**לפני:**
+```python
+# Remove player bbox area from mask (player hides this part)
+padding = 5
+cv2.rectangle(
+    mask,
+    (x - padding, y - padding),  # ❌ כל הגוף!
+    (x + w + padding, y + h + padding),
+    0,
+    -1
+)
+```
+
+**אחרי:**
+```python
+# Remove only FEET area from mask (feet hide the ring, not whole body)
+# Only the lower part of bbox (feet) should hide the ring
+feet_height = int(h * 0.3)  # Bottom 30% of bbox (feet area)
+feet_y = y + h - feet_height  # Start from bottom
+padding = 3
+cv2.rectangle(
+    mask,
+    (x - padding, feet_y - padding),  # ✅ רק הרגליים!
+    (x + w + padding, y + h + padding),
+    0,
+    -1
+)
+```
+
+---
+
+## 🎯 מה השתנה:
+
+### לפני:
+- ה-mask הסתיר את כל ה-bbox (כל הגוף)
+- נראה רע - יותר מדי חיתוך
+- לא נראה טבעי
+
+### אחרי:
+- ה-mask מסתיר רק את החלק התחתון (30% מהגובה) - הרגליים
+- נראה טבעי - רק הרגליים מסתירות את החישוק
+- החישוק נראה מאחורי הרגליים, אבל מעל שאר הגוף
+
+---
+
+## 📊 קבצים ששונו:
+
+1. **src/render/modern_styles.py**
+   - `draw_neon_ring()` - תיקון mask
+   - `draw_pulse_circle()` - תיקון mask
+   - `draw_gradient_ring()` - תיקון mask
+
+2. **src/render/overlay_renderer.py**
+   - `_draw_circle()` - תיקון mask
+
+---
+
+## 🚀 מה לעשות עכשיו:
+
+### שלב 1: פתח מחדש
+```
+Ctrl+C
+לחץ כפול: run.bat
+```
+
+### שלב 2: נסה שוב
+```
+1. ➕ Add Videos
+2. בחר סרטון
+3. ➕ Add Marker
+4. צייר bbox על השחקנית (כל הגוף!)
+5. בחר סגנון: ⭕ Circle / 💠 Neon Ring / 💫 Pulse / 🌈 Gradient
+6. Confirm
+7. ▶ Start Tracking Current
+8. Preview → תראה שהחישוק נראה מאחורי הרגליים בלבד!
+```
+
+---
+
+## 🎨 מה אמור להיראות:
+
+**עכשיו:**
+- החישוק נראה מאחורי הרגליים (החלק התחתון)
+- החישוק נראה מעל שאר הגוף (החלק העליון)
+- נראה טבעי ומקצועי!
+
+---
+
+**תוקן! עכשיו רק הרגליים מסתירות את החישוק! 🎯✨**
+
+
+
+
+
+

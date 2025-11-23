@@ -1,0 +1,369 @@
+=== 🎯 תכונות חדשות - תצוגה מקדימה ומסך מלא! ===
+
+## ✅ מה הוספתי:
+
+### 1️⃣ תצוגה מקדימה לפני ייצוא סופי! 📺
+
+**הבעיה:** 
+```
+יצאת סרטון → המתנת 5 דקות → גילית שהמעקב לא מדויק ❌
+חזרת → תיקנת → חיכית עוד 5 דקות → שוב לא מדויק ❌
+```
+
+**הפתרון:**
+```
+Export → Track (אוטומטי) → Preview → אישור → ייצוא סופי ✅
+
+חוסך זמן ומשאבים! ⚡
+```
+
+**איך זה עובד:**
+
+#### סרטון יחיד (Export Current Video):
+```
+1. לחץ על "📤 Export Current Video"
+
+2. אם עדיין לא עשית Track:
+   → המערכת תשאל: "Track now?"
+   → כן → Tracking אוטומטי
+   
+3. תצוגה מקדימה נפתחת:
+   📺 Preview Dialog
+   
+   בקרים:
+   - ▶ Play/Pause (Space)
+   - ⏮ Previous / Next ⏭ (Arrow keys)
+   - 🖵 Fullscreen (F11 / F)
+   - Timeline Slider
+   
+4. בדוק את המעקב:
+   - נגן את הסרטון
+   - וודא שהעיגול עוקב נכון
+   - בדוק שהשחקנית במרכז
+   
+5. אשר ייצוא:
+   ✅ "I approve this tracking - ready to export"
+   
+6. לחץ "📤 Proceed to Export"
+   
+7. בחר מיקום ושם
+   
+8. המערכת מייצאת רק עכשיו! ⚡
+```
+
+#### מספר סרטונים (Export All Videos):
+```
+1. לחץ על "📤 Export All Videos"
+
+2. תצוגת Batch Preview נפתחת:
+   📺 רשימה של כל הסרטונים
+   
+3. לכל סרטון:
+   - לחיצה כפולה → Preview
+   - סמן ✅ Checkbox לאישור
+   
+4. כפתורים מהירים:
+   ✅ Approve All
+   ❌ Reject All
+   ☑ Toggle Approval
+   
+5. סיכום מוצג:
+   "✅ Approved: 3 / 5 videos"
+   
+6. לחץ "📤 Export Approved Videos"
+   
+7. רק סרטונים מסומנים יוצאו! ✅
+```
+
+---
+
+### 2️⃣ מסך מלא לנגן! 🖵
+
+**הבעיה:**
+```
+קשה לראות פרטים קטנים בחלון הנגן הקטן ❌
+לא יכול לדייק את המיקום של bbox ❌
+```
+
+**הפתרון:**
+```
+כפתור Fullscreen + קיצורי מקלדת ✅
+```
+
+**איך זה עובד:**
+
+#### מהנגן הראשי:
+```
+1. טען סרטון
+   
+2. לחץ "🖵 Fullscreen"
+   (או: F11 / F)
+   
+3. המסך מתמלא לחלוטין! 🖥️
+   
+4. ניווט בפריימים:
+   ← → (חצים שמאל/ימין)
+   
+5. יציאה ממסך מלא:
+   Escape / F11 / F
+```
+
+#### מתוך Preview Dialog:
+```
+1. בPreview Dialog יש גם כפתור Fullscreen!
+   
+2. אותם קיצורי מקלדת
+   
+3. מושלם לבדיקת דיוק המעקב
+```
+
+---
+
+## 🎯 זרימת העבודה החדשה:
+
+### זרימה רגילה (סרטון אחד):
+```
+1. Add Videos
+2. בחר סרטון
+3. Add Marker → bbox → סגנון → Confirm
+4. Export Current Video
+   ↓
+5. 📺 Preview נפתח אוטומטית
+   (אם צריך, Track רץ קודם)
+6. Play וב דוק
+7. אישור ✅
+8. בחר מיקום
+9. ייצוא מהיר! ⚡
+```
+
+### זרימה Batch (מספר סרטונים):
+```
+1. Add Videos (5 סרטונים)
+2. לכל אחד: Add Marker
+3. Start Tracking All (אופציונלי)
+4. Export All Videos
+   ↓
+5. 📺 Batch Preview נפתח
+6. לחיצה כפולה על כל סרטון → Preview
+7. סמן ✅ את המאושרים
+8. Export Approved Videos
+9. רק המאושרים מיוצאים! ✅
+```
+
+---
+
+## ⌨️ קיצורי מקלדת:
+
+### Preview Dialog:
+```
+Space       → Play/Pause
+←           → Previous Frame
+→           → Next Frame
+F11 / F     → Fullscreen
+Escape      → Close / Exit Fullscreen
+```
+
+### Fullscreen Mode:
+```
+←           → Previous Frame
+→           → Next Frame
+Escape      → Exit Fullscreen
+F11 / F     → Exit Fullscreen
+```
+
+---
+
+## 💡 תרחישי שימוש:
+
+### תרחיש 1: "המעקב לא מדויק"
+```
+Before:
+❌ Export → המתן 5 דקות → גילוי בעיה → חזרה → המתן שוב
+
+After:
+✅ Export → Preview → גילוי בעיה → ביטול → תיקון → Preview → אישור
+   חיסכון: 90% מהזמן!
+```
+
+### תרחיש 2: "10 סרטונים לייצוא"
+```
+Before:
+❌ יצא את כולם → המתן שעה → גילוי שחלקם לא טובים → אבדן זמן
+
+After:
+✅ Preview לכולם → אישור רק הטובים → ייצוא רק מה שצריך
+   חיסכון: שעות!
+```
+
+### תרחיש 3: "צריך לדייק bbox"
+```
+Before:
+❌ קשה לראות פרטים בחלון קטן
+
+After:
+✅ Fullscreen → רואה הכל ברור → דיוק מושלם
+```
+
+---
+
+## 📊 חיסכון בזמן:
+
+### סרטון יחיד:
+```
+לפני (ללא Preview):
+├─ ניסיון 1: Track (30s) + Export (2min) = 2.5min
+├─ גילוי בעיה → ניסיון 2: 2.5min
+├─ גילוי בעיה → ניסיון 3: 2.5min
+└─ סה"כ: 7.5 דקות ❌
+
+אחרי (עם Preview):
+├─ Track (30s) + Preview (30s) + גילוי בעיה
+├─ תיקון + Track (30s) + Preview (30s) + אישור
+├─ Export (2min)
+└─ סה"כ: 4 דקות ✅
+
+חיסכון: 46%!
+```
+
+### 10 סרטונים:
+```
+לפני:
+├─ Track כולם: 5min
+├─ Export כולם: 20min
+├─ גילוי ש-3 לא טובים
+├─ אבדן: 20min × 30% = 6min
+└─ סה"כ: 31 דקות ❌
+
+אחרי:
+├─ Track כולם: 5min
+├─ Preview כולם: 5min
+├─ אישור רק 7
+├─ Export רק 7: 14min
+└─ סה"כ: 24 דקות ✅
+
+חיסכון: 23%!
+```
+
+---
+
+## 🎨 הקבצים החדשים:
+
+### 1. src/ui/preview_dialog.py
+```python
+✅ Preview Dialog עם נגן מלא
+✅ Play/Pause/Navigate
+✅ Fullscreen mode
+✅ Approval checkbox
+✅ Keyboard shortcuts
+```
+
+### 2. src/ui/batch_preview_dialog.py
+```python
+✅ רשימת סרטונים
+✅ Checkbox לכל אחד
+✅ לחיצה כפולה → Preview
+✅ Approve/Reject All
+✅ סיכום מאושרים
+```
+
+### 3. src/ui/main_window.py (שינויים)
+```python
+✅ _export_single() → Preview flow
+✅ _batch_export() → Batch Preview flow
+✅ Fullscreen button + function
+✅ Integration עם Preview dialogs
+```
+
+---
+
+## 🚀 איך לנסות:
+
+### 1. סגור ופתח מחדש:
+```bash
+Ctrl+C
+לחץ כפול: run.bat
+```
+
+### 2. נסה סרטון יחיד:
+```
+1. Add Videos → בחר סרטון
+2. לחץ על הסרטון
+3. Add Marker → bbox → סגנון → Confirm
+4. Export Current Video
+   → Preview יפתח!
+5. Play → בדוק
+6. אשר ✅ → ייצוא!
+```
+
+### 3. נסה Fullscreen:
+```
+1. טען סרטון
+2. לחץ "🖵 Fullscreen"
+3. חצים ← → לניווט
+4. Escape ליציאה
+```
+
+### 4. נסה Batch:
+```
+1. Add Videos → 2-3 סרטונים
+2. לכל אחד: Add Marker
+3. Export All Videos
+   → Batch Preview יפתח!
+4. לחיצה כפולה על כל סרטון
+5. סמן ✅ את הטובים
+6. Export Approved
+```
+
+---
+
+## 💬 מה לבדוק:
+
+### Preview Dialog:
+```
+✅ הנגן עובד?
+✅ Play/Pause חלק?
+✅ ניווט פריימים עובד?
+✅ Timeline slider עובד?
+✅ Fullscreen עובד?
+✅ Approval checkbox?
+✅ Export רק אחרי אישור?
+```
+
+### Batch Preview:
+```
+✅ רשימת סרטונים נכונה?
+✅ לחיצה כפולה פותחת Preview?
+✅ Checkbox עובד?
+✅ Approve/Reject All?
+✅ סיכום מדויק?
+✅ Export רק מאושרים?
+```
+
+### Fullscreen:
+```
+✅ מסך מלא אמיתי?
+✅ תמונה ברורה?
+✅ ניווט בחצים?
+✅ Escape יוצא?
+```
+
+---
+
+## 🎯 סיכום היתרונות:
+
+```
+✅ חיסכון בזמן (20-50%)
+✅ חיסכון במשאבים (רק מה שצריך)
+✅ שליטה מלאה (אישור לפני ייצוא)
+✅ דיוק גבוה יותר (fullscreen)
+✅ workflow מקצועי
+✅ פחות טעויות
+✅ יעילות מקסימלית
+```
+
+---
+
+**נסה עכשיו ותגיד לי מה אתה חושב! 🚀📺✨**
+
+**זרימת העבודה החדשה חוסכת המון זמן ונותנת שליטה מלאה!**
+

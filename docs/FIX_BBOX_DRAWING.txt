@@ -1,0 +1,87 @@
+=== ✅ תיקון סימון שחקנית ===
+
+## הבעיה:
+ציור ה-bboxes היה מושבת מהבדיקות הקודמות!
+
+## התיקון:
+✅ החזרתי את ציור ה-bboxes ב-`_update_display`
+✅ הוספתי debug logging לכל ה-mouse events
+✅ הוספתי הודעות שגיאה ברורות יותר
+
+---
+
+## מה לעשות עכשיו:
+
+1. **סגור את התוכנה** (חשוב!)
+
+2. **הפעל מחדש:**
+   ```
+   לחץ כפול על: run.bat
+   ```
+
+3. **טען וידאו**
+
+4. **לחץ על "Add Player Marker"**
+
+5. **צייר תיבה על השחקנית:**
+   - לחץ ולחוץ על העכבר
+   - גרור ליצירת מלבן
+   - שחרר
+
+---
+
+## מה תראה ב-PowerShell:
+
+### כשלוחץ על "Add Player Marker":
+```
+_add_player_marker called
+Waiting for bbox draw...
+```
+
+### כשמתחיל לצייר:
+```
+MousePress: button=LeftButton, current_frame is None=False
+MousePress: pos=(500, 300)
+MousePress: image coords=(800, 450)
+MousePress: Drawing started at (800, 450)
+```
+
+### בזמן הציור:
+```
+MouseMove: bbox=(800, 450, 50, 30)
+MouseMove: bbox=(800, 450, 100, 60)
+Drawing current bbox: (800, 450, 100, 60)
+```
+
+### כשמסיים:
+```
+MouseRelease: button=LeftButton, drawing=True
+MouseRelease: bbox=(800, 450, 120, 80)
+MouseRelease: Emitting bbox_selected signal
+_on_bbox_selected called: bbox=(800, 450, 120, 80)
+```
+
+---
+
+## אם לא עובד:
+
+שלח לי:
+1. **צילום מסך של החלון**
+2. **העתק את הפלט מ-PowerShell** (רק החלק הרלוונטי)
+3. **תאר מה קורה בדיוק:**
+   - האם הכפתור "Add Player Marker" פעיל?
+   - האם הסטטוס משתנה ל-"Draw bounding box on video"?
+   - האם יש הדפסות כשלוחצים על הוידאו?
+   - האם רואים מלבן בזמן הציור?
+
+---
+
+## קבצים שעודכנו:
+- ✅ `src/ui/video_canvas.py` - החזרת ציור bboxes + debug logging
+- ✅ `src/ui/main_window.py` - הוספת debug logging והודעות שגיאה
+
+---
+
+**נסה עכשיו! 🎯**
+
+

@@ -1,0 +1,61 @@
+=== Debug: בדיקת ניווט פריימים ===
+
+הוספתי הרבה הדפסות debug לקוד כדי לראות מה בדיוק קורה.
+
+## מה לעשות:
+
+1. **הפעל את התוכנה מחדש:**
+   ```
+   סגור את התוכנה אם היא פתוחה
+   לחץ כפול על: run.bat
+   ```
+
+2. **טען וידאו**
+
+3. **נסה ללחוץ על Next Frame כמה פעמים**
+
+4. **העתק את כל התוכן מה-PowerShell**
+   - לחץ על חלון ה-PowerShell
+   - Ctrl+A (לבחור הכל)
+   - Enter (להעתיק)
+   - שלח לי את כל הפלט
+
+## מה אני מצפה לראות:
+
+כשאתה לוחץ על "Next Frame", אמור להראות:
+
+```
+_next_frame called: current=0, total=749
+Moving to frame 1
+_show_frame called with frame_idx=1
+get_frame called: frame_idx=1
+Setting frame position to 1
+Read result: ret=True, frame is None=False
+Successfully read frame 1, shape=(1080, 1920, 3)
+Got frame 1, shape: (1080, 1920, 3)
+Showing frame without overlays
+Frame 1 displayed successfully
+```
+
+## אם רואים משהו כמו:
+```
+ERROR: get_frame returned None for frame 1
+```
+או
+```
+ERROR: video_cap is None or not opened
+```
+או
+```
+ERROR: Failed to read frame 1
+```
+
+אז אני אדע בדיוק איפה הבעיה!
+
+## שלח לי:
+1. את כל התוכן מה-PowerShell (copy/paste)
+2. צילום מסך של החלון
+
+בהצלחה! 🔍
+
+

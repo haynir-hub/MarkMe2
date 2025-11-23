@@ -1,0 +1,45 @@
+=== 🔥 HOTFIX - תיקון מהיר! ===
+
+## ❌ הבעיה:
+```
+AttributeError: 'VideoProject' object has no attribute 'name'
+
+קרה ב: Start Tracking All Videos
+עם: 11 סרטונים
+```
+
+## ✅ התיקון:
+
+**קובץ:** src/ui/main_window.py - שורה 623
+
+**לפני:**
+```python
+self.status_label.setText(f"🔄 Tracking {index + 1}/{len(projects)}: {project.name}...")
+```
+
+**אחרי:**
+```python
+self.status_label.setText(f"🔄 Tracking {index + 1}/{len(projects)}: {project.get_display_name()}...")
+```
+
+---
+
+## 🚀 נסה שוב עכשיו:
+
+```
+1. פתח מחדש (Ctrl+C, run.bat)
+2. טען את 11 הסרטונים
+3. סמן שחקנית בכל אחד
+4. ▶ Start Tracking All Videos
+5. המערכת צריכה לעבוד!
+```
+
+---
+
+**תוקן! נסה שוב! 🎯**
+
+
+
+
+
+

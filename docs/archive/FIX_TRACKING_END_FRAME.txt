@@ -1,0 +1,131 @@
+=== ✅ FIX - הוספת End Tracking Frame ===
+
+## ❌ הבעיה:
+
+**המשתמש דיווח:**
+"אני רוצה שיהיה גם לחצן של end tracking זה אומר שמנקודה זו עד סוף הסרטון אין יותר אלמנט מעקב"
+
+**הבעיה:**
+- היה רק "Start Tracking From" - המעקב התחיל מנקודה מסוימת
+- לא הייתה אפשרות לעצור את המעקב בנקודה מסוימת
+- המעקב תמיד המשיך עד הסוף
+
+---
+
+## ✅ התיקון:
+
+**הוספתי כפתור "Set End Frame":**
+
+### 1. UI חדש:
+- **לפני:** רק "Start Tracking From"
+- **אחרי:** "Tracking Range" עם:
+  - "📍 Set Start" - מסמן נקודת התחלה
+  - "📍 Set End" - מסמן נקודת סיום
+  - "🗑️ Clear All" - מנקה את כל הטווח
+
+### 2. לוגיקה:
+- **לפני:** המעקב תמיד עד הסוף
+- **אחרי:** המעקב עובד רק בטווח שנבחר:
+  - לפני Start Frame - אין מעקב
+  - בין Start Frame ל-End Frame - יש מעקב
+  - אחרי End Frame - אין מעקב
+
+### 3. Export:
+- מציג את כל הסרטון
+- מעקב רק בטווח שנבחר
+- לפני ואחרי הטווח - ללא מעקב
+
+---
+
+## 🎯 מה השתנה:
+
+### UI:
+- **לפני:** "🎯 Start Tracking From" עם רק "Set Start Frame"
+- **אחרי:** "🎯 Tracking Range" עם "Set Start" ו-"Set End"
+
+### לוגיקה:
+- **לפני:** `trim_start_frame` - המעקב תמיד עד הסוף
+- **אחרי:** `trim_start_frame` ו-`trim_end_frame` - המעקב רק בטווח
+
+### TrackingThread:
+- **לפני:** תמיד עוקב עד הסוף
+- **אחרי:** עוקב רק בטווח שנבחר (start_frame עד end_frame)
+
+---
+
+## 🚀 איך להשתמש:
+
+### 1. סמן טווח מעקב:
+```
+1. ➕ Add Videos
+2. בחר סרטון
+3. ניווט לפריים שבו רוצה שהמעקב יתחיל
+4. לחץ "📍 Set Start" - מסמן נקודת התחלה
+5. ניווט לפריים שבו רוצה שהמעקב יסתיים
+6. לחץ "📍 Set End" - מסמן נקודת סיום
+7. תראה: "Tracking: Frame X to Y (Z frames with tracking markers)"
+```
+
+### 2. המעקב:
+```
+▶ Start Tracking Current
+- המעקב יתחיל מהפריים שסימנת ב-Start
+- המעקב יסתיים בפריים שסימנת ב-End
+- הפריימים לפני Start - לא יעקבו
+- הפריימים אחרי End - לא יעקבו
+```
+
+### 3. ה-Export:
+```
+📤 Export Current Video
+- הסרטון יישאר באותו אורך ✅
+- הפריימים לפני Start - ללא מעקב ✅
+- הפריימים בין Start ל-End - עם מעקב ✅
+- הפריימים אחרי End - ללא מעקב ✅
+```
+
+---
+
+## 📊 קבצים ששונו:
+
+1. **src/ui/main_window.py**
+   - שינוי שם מ-"Start Tracking From" ל-"Tracking Range"
+   - הוספת כפתור "📍 Set End"
+   - הוספת פונקציות: `_set_tracking_end()`, `_clear_tracking_range()`, `_update_tracking_range_info()`
+   - עדכון כל השימושים ב-TrackingThread - כולל `trim_end_frame`
+
+2. **src/ui/main_window.py** - TrackingThread
+   - עדכון הלוגיקה - עוקב רק בטווח שנבחר (`start_frame` עד `end_frame`)
+   - אם `trim_end_frame` מוגדר - עוצר שם
+   - אם `trim_end_frame` הוא None - עוקב עד הסוף
+
+3. **src/render/video_exporter.py**
+   - כבר עובד נכון! בודק אם יש bbox לכל frame
+   - אם אין bbox - לא מצייר מרקר (זה מה שאנחנו רוצים!)
+
+---
+
+## 🎨 UI החדש:
+
+```
+┌─────────────────────────────────────────┐
+│  🎯 Tracking Range                      │
+│                                         │
+│  Tracking: Full video                   │
+│                                         │
+│  Start: [📍 Set Start]                  │
+│  End:   [📍 Set End]                    │
+│                                         │
+│  [🗑️ Clear All]                        │
+└─────────────────────────────────────────┘
+```
+
+---
+
+**תוקן! עכשיו יש גם "Set End" - המעקב עובד רק בטווח שנבחר! 🎯✨**
+
+
+
+
+
+

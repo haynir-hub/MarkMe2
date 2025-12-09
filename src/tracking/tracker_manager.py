@@ -10,28 +10,43 @@ from .player_tracker import PlayerTracker, TrackerType
 
 class PlayerData:
     """Data structure for a tracked player"""
-    def __init__(self, player_id: int, name: str, marker_style: str, 
-                 initial_frame: int, bbox: Tuple[int, int, int, int]):
+    def __init__(self, player_id: int, name: str, marker_style: str,
+                 initial_frame: int, bbox: Tuple[int, int, int, int],
+                 original_bbox: Optional[Tuple[int, int, int, int]] = None):
         self.player_id = player_id
         self.name = name
         self.marker_style = marker_style  # 'arrow', 'circle', 'rectangle'
         self.initial_frame = initial_frame  # First frame where player was marked (for tracking start)
-        self.bbox = bbox  # Bbox at initial_frame (used for tracking initialization)
+        self.bbox = bbox  # Bbox at initial_frame (used for tracking initialization) - this is the PADDED bbox
+        self.original_bbox = original_bbox or bbox  # Original bbox BEFORE padding (for accurate marker placement)
         # Learning frames: frames where user marked this player for learning (before tracking starts)
         # Format: {frame_idx: bbox}
         self.learning_frames: Dict[int, Tuple[int, int, int, int]] = {initial_frame: bbox}
+        self.original_learning_frames: Dict[int, Tuple[int, int, int, int]] = {initial_frame: original_bbox or bbox}
         self.tracker = PlayerTracker(TrackerType.CSRT)
         self.current_bbox = bbox
+        self.current_original_bbox = original_bbox or bbox
         self.tracking_lost = False
         self.color = self._get_default_color()
+
+        # Calculate padding offset (difference between padded and original bbox)
+        if original_bbox and original_bbox != bbox:
+            orig_x, orig_y, orig_w, orig_h = original_bbox
+            pad_x, pad_y, pad_w, pad_h = bbox
+            self.padding_offset = (orig_x - pad_x, orig_y - pad_y, pad_w - orig_w, pad_h - orig_h)
+        else:
+            self.padding_offset = (0, 0, 0, 0)  # No padding
     
-    def add_learning_frame(self, frame_idx: int, bbox: Tuple[int, int, int, int]):
+    def add_learning_frame(self, frame_idx: int, bbox: Tuple[int, int, int, int],
+                          original_bbox: Optional[Tuple[int, int, int, int]] = None):
         """Add a learning frame for this player"""
         self.learning_frames[frame_idx] = bbox
+        self.original_learning_frames[frame_idx] = original_bbox or bbox
         # Update initial_frame to the earliest learning frame
         if frame_idx < self.initial_frame:
             self.initial_frame = frame_idx
             self.bbox = bbox
+            self.original_bbox = original_bbox or bbox
     
     def _get_default_color(self) -> Tuple[int, int, int]:
         """Get default color based on marker style"""
@@ -151,44 +166,48 @@ class TrackerManager:
             traceback.print_exc()
             return False
     
-    def add_player(self, name: str, marker_style: str, 
-                   initial_frame: int, bbox: Tuple[int, int, int, int]) -> int:
+    def add_player(self, name: str, marker_style: str,
+                   initial_frame: int, bbox: Tuple[int, int, int, int],
+                   original_bbox: Optional[Tuple[int, int, int, int]] = None) -> int:
         """
         Add a new player to track
-        
+
         Args:
             name: Player name
             marker_style: Style of marker ('arrow', 'circle', 'rectangle')
             initial_frame: Frame index where player is marked
-            bbox: Bounding box (x, y, width, height)
-            
+            bbox: Bounding box (x, y, width, height) - PADDED bbox for tracking
+            original_bbox: Original bbox BEFORE padding (for accurate marker placement)
+
         Returns:
             Player ID
         """
         player_id = self.next_player_id
         self.next_player_id += 1
-        
-        player = PlayerData(player_id, name, marker_style, initial_frame, bbox)
+
+        player = PlayerData(player_id, name, marker_style, initial_frame, bbox, original_bbox)
         self.players[player_id] = player
-        
+
         return player_id
     
-    def add_learning_frame_to_player(self, player_id: int, frame_idx: int, bbox: Tuple[int, int, int, int]) -> bool:
+    def add_learning_frame_to_player(self, player_id: int, frame_idx: int, bbox: Tuple[int, int, int, int],
+                                    original_bbox: Optional[Tuple[int, int, int, int]] = None) -> bool:
         """
         Add a learning frame to an existing player
-        
+
         Args:
             player_id: Player ID
             frame_idx: Frame index where player is marked
-            bbox: Bounding box (x, y, width, height)
-            
+            bbox: Bounding box (x, y, width, height) - PADDED bbox for tracking
+            original_bbox: Original bbox BEFORE padding (for accurate marker placement)
+
         Returns:
             True if successful, False if player not found
         """
         if player_id not in self.players:
             return False
-        
-        self.players[player_id].add_learning_frame(frame_idx, bbox)
+
+        self.players[player_id].add_learning_frame(frame_idx, bbox, original_bbox)
         return True
     
     def update_trackers(self, frame: np.ndarray, frame_idx: int = None) -> Dict[int, Optional[Tuple[int, int, int, int]]]:
@@ -203,19 +222,70 @@ class TrackerManager:
             Dictionary mapping player_id to current bbox (or None if lost)
         """
         results = {}
-        
+
         for player_id, player in self.players.items():
-            bbox = player.tracker.update(frame)
-            player.current_bbox = bbox
-            player.tracking_lost = (bbox is None)
+            # Debug: Print learning frames info every 100 frames
+            if frame_idx is not None and frame_idx % 100 == 0:
+                print(f"📊 Frame {frame_idx}: Player {player_id} learning_frames={list(player.learning_frames.keys())}")
+
+            # Check if this frame is a learning frame - if so, reinitialize tracker
+            if frame_idx is not None and frame_idx in player.learning_frames:
+                # This is a learning frame! Use the exact bbox from learning frame
+                learning_bbox = player.learning_frames[frame_idx]
+
+                print(f"🔄 LEARNING FRAME DETECTED! Frame {frame_idx}")
+                print(f"   Player {player_id}: Reinitializing tracker with bbox={learning_bbox}")
+
+                # Reinitialize tracker with the correct bbox from learning frame
+                player.tracker.init(frame, learning_bbox)
+                bbox = learning_bbox
+
+                # Also update current_original_bbox from original_learning_frames
+                if frame_idx in player.original_learning_frames:
+                    player.current_original_bbox = player.original_learning_frames[frame_idx]
+                    print(f"   Updated current_original_bbox to {player.current_original_bbox}")
+                else:
+                    # Fallback: calculate from padded bbox
+                    if player.padding_offset != (0, 0, 0, 0):
+                        x, y, w, h = bbox
+                        offset_x, offset_y, offset_w, offset_h = player.padding_offset
+                        orig_x = x + offset_x
+                        orig_y = y + offset_y
+                        orig_w = w - offset_w
+                        orig_h = h - offset_h
+                        player.current_original_bbox = (orig_x, orig_y, orig_w, orig_h)
+                    else:
+                        player.current_original_bbox = bbox
+
+                player.current_bbox = bbox
+                player.tracking_lost = False
+            else:
+                # Normal tracking update
+                bbox = player.tracker.update(frame)
+                player.current_bbox = bbox
+                player.tracking_lost = (bbox is None)
+
+                # Calculate current_original_bbox from current_bbox using padding offset
+                if bbox is not None and player.padding_offset != (0, 0, 0, 0):
+                    x, y, w, h = bbox
+                    offset_x, offset_y, offset_w, offset_h = player.padding_offset
+                    # Reverse the padding: original = padded + offset
+                    orig_x = x + offset_x
+                    orig_y = y + offset_y
+                    orig_w = w - offset_w
+                    orig_h = h - offset_h
+                    player.current_original_bbox = (orig_x, orig_y, orig_w, orig_h)
+                else:
+                    player.current_original_bbox = bbox
+
             results[player_id] = bbox
-            
+
             # Store result if frame_idx provided
             if frame_idx is not None:
                 if player_id not in self.tracking_results:
                     self.tracking_results[player_id] = {}
                 self.tracking_results[player_id][frame_idx] = bbox
-        
+
         return results
     
     def get_bbox_at_frame(self, player_id: int, frame_idx: int) -> Optional[Tuple[int, int, int, int]]:

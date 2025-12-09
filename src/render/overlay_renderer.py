@@ -28,17 +28,19 @@ class OverlayRenderer:
         self.position_buffer_size = 5
     
     def draw_marker(self, frame: np.ndarray, bbox: Tuple[int, int, int, int],
-                   marker_style: str, color: Tuple[int, int, int]) -> np.ndarray:
+                   marker_style: str, color: Tuple[int, int, int],
+                   player=None) -> np.ndarray:
         """
         Draw marker on frame based on style
-        
+
         Args:
             frame: Frame to draw on (BGR format)
             bbox: Bounding box (x, y, width, height)
-            marker_style: Style ('arrow', 'circle', 'rectangle', 'spotlight', 'outline', 
+            marker_style: Style ('arrow', 'circle', 'rectangle', 'spotlight', 'outline',
                           'neon_ring', 'pulse', 'gradient', 'dynamic_arrow', 'hexagon', 'crosshair')
             color: BGR color tuple
-            
+            player: Player object (optional, for accessing original_bbox)
+
         Returns:
             Frame with marker drawn
         """
@@ -52,9 +54,9 @@ class OverlayRenderer:
         
         # Classic styles
         if marker_style == 'arrow':
-            return self._draw_arrow(frame, bbox, color)
+            return self._draw_arrow(frame, bbox, color, player)
         elif marker_style == 'circle':
-            return self._draw_circle(frame, bbox, color)
+            return self._draw_circle(frame, bbox, color, player)
         elif marker_style == 'rectangle':
             return self._draw_rectangle(frame, bbox, color)
         elif marker_style == 'spotlight':
@@ -64,136 +66,170 @@ class OverlayRenderer:
         
         # Modern styles
         elif marker_style == 'neon_ring':
-            return self.modern_styles.draw_neon_ring(frame, bbox, color)
+            return self.modern_styles.draw_neon_ring(frame, bbox, color, player)
         elif marker_style == 'pulse':
             # Force orange color for pulse (BGR: 0, 165, 255)
             orange_color = (0, 165, 255)
-            return self.modern_styles.draw_pulse_circle(frame, bbox, orange_color, self.frame_count)
+            return self.modern_styles.draw_pulse_circle(frame, bbox, orange_color, self.frame_count, player)
         elif marker_style == 'gradient':
             # Gradient colors (purple variants)
             color1 = (255, 0, 200)  # Purple
             color2 = (200, 0, 255)  # Purple variant
-            return self.modern_styles.draw_gradient_ring(frame, bbox, color1, color2, self.frame_count)
+            return self.modern_styles.draw_gradient_ring(frame, bbox, color1, color2, self.frame_count, player)
         elif marker_style == 'dynamic_arrow':
-            return self.modern_styles.draw_dynamic_arrow(frame, bbox, color, self.frame_count)
+            # Bright cyan for high visibility
+            cyan_color = (255, 255, 0)  # Bright yellow-cyan
+            return self.modern_styles.draw_dynamic_arrow(frame, bbox, cyan_color, self.frame_count, player)
         elif marker_style == 'hexagon':
-            return self.modern_styles.draw_hexagon_outline(frame, bbox, color)
+            return self.modern_styles.draw_hexagon_outline(frame, bbox, color, player)
         elif marker_style == 'crosshair':
             return self.modern_styles.draw_crosshair(frame, bbox, color)
         elif marker_style == 'spotlight_modern':
-            return self.modern_styles.draw_spotlight(frame, bbox, color)
+            # Cyan/white color for alien beam
+            beam_color = (200, 255, 255)
+            return self.modern_styles.draw_spotlight(frame, bbox, beam_color, player)
         elif marker_style == 'flame':
-            return self.modern_styles.draw_flame(frame, bbox, color, self.frame_count)
+            # Gold color for premium star
+            gold_color = (0, 215, 255)
+            return self.modern_styles.draw_flame(frame, bbox, gold_color, self.frame_count, player)
         else:
             return frame
     
     def _draw_arrow(self, frame: np.ndarray, bbox: Tuple[int, int, int, int],
-                   color: Tuple[int, int, int]) -> np.ndarray:
+                   color: Tuple[int, int, int], player=None) -> np.ndarray:
         """
-        Draw beautiful arrow above player's head with glow effect
-        
+        Draw impressive 3D arrow above player's head - championship broadcast style
+
         Args:
             frame: Frame to draw on
-            bbox: Bounding box
-            color: Arrow color (yellow)
-            
+            bbox: Bounding box (padded)
+            color: Arrow color (bright yellow)
+            player: Player object (for accessing original_bbox)
+
         Returns:
             Frame with arrow
         """
         x, y, w, h = bbox
-        
-        # Calculate arrow position (above head)
-        center_x = x + w // 2
-        # Position arrow higher above head
-        arrow_y = max(0, y - 50)  # Higher above head
+
+        # Position arrow above head using original_bbox if available
+        if hasattr(player, 'current_original_bbox') and player and player.current_original_bbox:
+            orig_x, orig_y, orig_w, orig_h = player.current_original_bbox
+            center_x = orig_x + orig_w // 2
+            # Position much higher above original head
+            arrow_y = max(0, orig_y - 60)
+        else:
+            # Fallback
+            center_x = x + w // 2
+            arrow_y = max(0, y - 60)
+
         arrow_x = center_x
-        
-        # Make arrow size proportional to player size
-        arrow_size = max(int(w * 0.35), 35)  # Proportional to body width, larger
-        
-        # Create arrow shape - more elegant with sharper point
-        tip_y = arrow_y
-        base_y = arrow_y + arrow_size
-        base_width = arrow_size
-        
-        # Draw glow effect (multiple layers)
-        for i in range(4, 0, -1):
+
+        # Professional arrow design - sleek and modern, pointing DOWN at player
+        arrow_size = max(int(w * 0.35), 35)
+        shaft_width = max(int(arrow_size * 0.25), 8)
+        head_width = max(int(arrow_size * 0.6), 20)
+
+        # Arrow pointing DOWN: shaft at top, head at bottom (toward player)
+        shaft_start_y = arrow_y
+        shaft_end_y = arrow_y + int(arrow_size * 0.6)
+        tip_y = arrow_y + arrow_size  # Tip points DOWN toward player
+
+        # Professional yellow color (brighter, more saturated)
+        yellow_bright = (0, 220, 255)  # Bright yellow in BGR
+        yellow_glow = (100, 235, 255)  # Lighter glow
+
+        # Draw outer glow for depth
+        for i in range(5, 0, -1):
             overlay = frame.copy()
-            glow_size = arrow_size + i * 3
-            glow_base_width = base_width + i * 2
-            glow_tip_y = tip_y - i
-            glow_base_y = base_y + i
-            
-            glow_points = np.array([
-                [arrow_x, glow_tip_y],
-                [arrow_x - glow_base_width // 2, glow_base_y],
-                [arrow_x + glow_base_width // 2, glow_base_y]
+            glow_factor = 1.0 + (i * 0.15)
+
+            # Glow for shaft
+            glow_shaft_points = np.array([
+                [arrow_x - int(shaft_width * glow_factor) // 2, shaft_start_y],
+                [arrow_x + int(shaft_width * glow_factor) // 2, shaft_start_y],
+                [arrow_x + int(shaft_width * glow_factor) // 2, shaft_end_y],
+                [arrow_x - int(shaft_width * glow_factor) // 2, shaft_end_y]
             ], np.int32)
-            
-            cv2.fillPoly(overlay, [glow_points], color)
-            cv2.addWeighted(overlay, 0.15 - (i * 0.03), frame, 1.0 - (0.15 - (i * 0.03)), 0, frame)
-        
-        # Draw main arrow with better shape
-        arrow_points = np.array([
-            [arrow_x, tip_y],
-            [arrow_x - base_width // 2, base_y],
-            [arrow_x - base_width // 3, base_y - arrow_size // 4],  # Inner point for sharper look
-            [arrow_x, base_y - arrow_size // 3],
-            [arrow_x + base_width // 3, base_y - arrow_size // 4],  # Inner point
-            [arrow_x + base_width // 2, base_y]
+            cv2.fillPoly(overlay, [glow_shaft_points], yellow_glow)
+
+            # Glow for arrowhead (pointing DOWN)
+            glow_head_points = np.array([
+                [arrow_x - int(head_width * glow_factor) // 2, shaft_end_y],
+                [arrow_x + int(head_width * glow_factor) // 2, shaft_end_y],
+                [arrow_x, tip_y]
+            ], np.int32)
+            cv2.fillPoly(overlay, [glow_head_points], yellow_glow)
+
+            cv2.addWeighted(overlay, 0.12, frame, 0.88, 0, frame)
+
+        # Draw main arrow shaft (rectangle at top)
+        shaft_points = np.array([
+            [arrow_x - shaft_width // 2, shaft_start_y],
+            [arrow_x + shaft_width // 2, shaft_start_y],
+            [arrow_x + shaft_width // 2, shaft_end_y],
+            [arrow_x - shaft_width // 2, shaft_end_y]
         ], np.int32)
-        
-        # Fill arrow
-        cv2.fillPoly(frame, [arrow_points], color)
-        
-        # Draw outline for definition
-        cv2.polylines(frame, [arrow_points], True, (0, 0, 0), 2, cv2.LINE_AA)
-        
-        # Add highlight on top
-        highlight_color = tuple(min(c + 50, 255) for c in color)
+        cv2.fillPoly(frame, [shaft_points], yellow_bright)
+
+        # Draw main arrow head (triangle pointing DOWN)
+        head_points = np.array([
+            [arrow_x - head_width // 2, shaft_end_y],
+            [arrow_x + head_width // 2, shaft_end_y],
+            [arrow_x, tip_y]
+        ], np.int32)
+        cv2.fillPoly(frame, [head_points], yellow_bright)
+
+        # Add white highlight on arrow head for 3D effect
         highlight_points = np.array([
-            [arrow_x, tip_y],
-            [arrow_x - base_width // 4, base_y - arrow_size // 2],
-            [arrow_x, base_y - arrow_size // 2.5],
-            [arrow_x + base_width // 4, base_y - arrow_size // 2]
+            [arrow_x - head_width // 4, shaft_end_y + 3],
+            [arrow_x + head_width // 4, shaft_end_y + 3],
+            [arrow_x, int(tip_y * 0.6 + shaft_end_y * 0.4)]
         ], np.int32)
-        cv2.fillPoly(frame, [highlight_points], highlight_color)
+        cv2.fillPoly(frame, [highlight_points], (200, 255, 255))
+
+        # Add dark outline for definition
+        dark_yellow = (0, 180, 220)
+        cv2.polylines(frame, [shaft_points], True, dark_yellow, 2, cv2.LINE_AA)
+        cv2.polylines(frame, [head_points], True, dark_yellow, 2, cv2.LINE_AA)
         
         return frame
     
     def _draw_circle(self, frame: np.ndarray, bbox: Tuple[int, int, int, int],
-                    color: Tuple[int, int, int]) -> np.ndarray:
+                    color: Tuple[int, int, int], player=None) -> np.ndarray:
         """
         Draw 3D floor hoop around player's feet (like professional sports broadcasts)
-        
+
         Args:
             frame: Frame to draw on
-            bbox: Bounding box
+            bbox: Bounding box (padded)
             color: Circle color
-            
+            player: Player object (for accessing original_bbox)
+
         Returns:
             Frame with 3D floor hoop
         """
         x, y, w, h = bbox
         
         # Calculate ellipse center (feet position - on the floor)
-        # X axis: Use precise center
+        # X axis: Use precise center (padded bbox is fine for X)
         center_x = x + w // 2
-        
-        # Calculate ellipse size - LARGE ENOUGH to keep player inside during movement
-        # Use larger radius to accommodate running/movement
-        radius_x = max(int(w * 0.8), 45)  # Large horizontal radius - around feet with margin
-        radius_y = max(int(w * 0.15), 10)  # Smaller vertical radius - flat on floor
-        
-        # Y axis: Place ring CENTERED at ANKLE level (above feet, at ankle)
-        # Bottom of ellipse should be at feet level (y + h)
-        # So: center_y + radius_y = y + h
-        # Therefore: center_y = y + h - radius_y
-        center_y = y + h - radius_y  # Center at ankle level, bottom touches feet
-        
-        # Debug: Log circle position
-        if np.random.random() < 0.1:  # Log 10% of frames to avoid spam
-            print(f"🎯 Circle: bbox=({x}, {y}, {w}, {h}) → center=({center_x}, {center_y}), radius=({radius_x}, {radius_y})")
+
+        # Calculate ellipse size - proportional to player width
+        radius_x = max(int(w * 0.6), 35)  # Horizontal radius
+        radius_y = max(int(w * 0.15), 10)  # Vertical radius (flat ellipse)
+
+        # Y axis: Position circle at feet level
+        # Use original_bbox if available (before padding was added)
+        # If not available, fallback to using the padded bbox
+        if hasattr(player, 'current_original_bbox') and player.current_original_bbox:
+            orig_x, orig_y, orig_w, orig_h = player.current_original_bbox
+            # Feet are at the BOTTOM of the original bbox (where the actual feet are)
+            feet_y = orig_y + orig_h
+        else:
+            # Fallback: assume no padding, use bottom of bbox
+            feet_y = y + h
+
+        center_y = feet_y - radius_y
         
         # Ensure within frame bounds
         frame_h, frame_w = frame.shape[:2]
@@ -229,48 +265,57 @@ class OverlayRenderer:
                        color: Tuple[int, int, int]) -> np.ndarray:
         """
         Draw clean blue border rectangle around player (no fill)
-        
+        Large size to allow freedom of movement
+
         Args:
             frame: Frame to draw on
-            bbox: Bounding box
+            bbox: Bounding box (padded)
             color: Rectangle color (will be overridden to blue)
-            
+
         Returns:
             Frame with rectangle
         """
         x, y, w, h = bbox
-        
+
         # Force blue color for rectangle (BGR format)
         blue_color = (255, 100, 0)  # Bright blue
-        
+
+        # Expand rectangle to give more room (20% extra space on all sides)
+        margin_x = int(w * 0.20)
+        margin_y = int(h * 0.20)
+        rect_x = max(0, x - margin_x)
+        rect_y = max(0, y - margin_y)
+        rect_w = w + (margin_x * 2)
+        rect_h = h + (margin_y * 2)
+
         # Draw outer glow for depth
         padding = 2
         overlay = frame.copy()
-        cv2.rectangle(overlay, 
-                     (x - padding, y - padding), 
-                     (x + w + padding, y + h + padding), 
-                     blue_color, 
+        cv2.rectangle(overlay,
+                     (rect_x - padding, rect_y - padding),
+                     (rect_x + rect_w + padding, rect_y + rect_h + padding),
+                     blue_color,
                      self.rectangle_thickness + 1)
         cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
-        
+
         # Draw main border (clean, no fill)
-        cv2.rectangle(frame, (x, y), (x + w, y + h), blue_color, self.rectangle_thickness)
+        cv2.rectangle(frame, (rect_x, rect_y), (rect_x + rect_w, rect_y + rect_h), blue_color, self.rectangle_thickness)
         
         # Add corner highlights for professional look
-        corner_size = 10
+        corner_size = 15
         corner_color = (255, 200, 100)  # Light cyan
         # Top-left corner
-        cv2.line(frame, (x, y), (x + corner_size, y), corner_color, 2)
-        cv2.line(frame, (x, y), (x, y + corner_size), corner_color, 2)
+        cv2.line(frame, (rect_x, rect_y), (rect_x + corner_size, rect_y), corner_color, 2)
+        cv2.line(frame, (rect_x, rect_y), (rect_x, rect_y + corner_size), corner_color, 2)
         # Top-right corner
-        cv2.line(frame, (x + w, y), (x + w - corner_size, y), corner_color, 2)
-        cv2.line(frame, (x + w, y), (x + w, y + corner_size), corner_color, 2)
+        cv2.line(frame, (rect_x + rect_w, rect_y), (rect_x + rect_w - corner_size, rect_y), corner_color, 2)
+        cv2.line(frame, (rect_x + rect_w, rect_y), (rect_x + rect_w, rect_y + corner_size), corner_color, 2)
         # Bottom-left corner
-        cv2.line(frame, (x, y + h), (x + corner_size, y + h), corner_color, 2)
-        cv2.line(frame, (x, y + h), (x, y + h - corner_size), corner_color, 2)
+        cv2.line(frame, (rect_x, rect_y + rect_h), (rect_x + corner_size, rect_y + rect_h), corner_color, 2)
+        cv2.line(frame, (rect_x, rect_y + rect_h), (rect_x, rect_y + rect_h - corner_size), corner_color, 2)
         # Bottom-right corner
-        cv2.line(frame, (x + w, y + h), (x + w - corner_size, y + h), corner_color, 2)
-        cv2.line(frame, (x + w, y + h), (x + w, y + h - corner_size), corner_color, 2)
+        cv2.line(frame, (rect_x + rect_w, rect_y + rect_h), (rect_x + rect_w - corner_size, rect_y + rect_h), corner_color, 2)
+        cv2.line(frame, (rect_x + rect_w, rect_y + rect_h), (rect_x + rect_w, rect_y + rect_h - corner_size), corner_color, 2)
         
         return frame
     
@@ -384,20 +429,60 @@ class OverlayRenderer:
         if not should_draw:
             # Don't draw any markers - return frame as-is
             return result_frame
-        
-        print(f"draw_all_markers: Drawing {len(players_data)} players")
-        for player in players_data:
-            print(f"  Player {player.player_id}: bbox={player.current_bbox}, style={player.marker_style}")
-            if player.current_bbox is not None:
-                result_frame = self.draw_marker(
+
+        # Special handling for spotlight_modern markers to ensure consistent brightness
+        # When multiple players have spotlights, we need to darken the frame ONCE
+        # and then draw all the light beams on the same darkened frame
+
+        spotlight_players = [p for p in players_data
+                            if p.current_bbox is not None and p.marker_style == 'spotlight_modern']
+        other_players = [p for p in players_data
+                        if p.current_bbox is not None and p.marker_style != 'spotlight_modern']
+
+        # If there are spotlight players, handle them specially
+        if spotlight_players:
+            # Darken the entire frame ONCE (not per player!)
+            darkened_frame = (result_frame.astype(np.float32) * 0.50).astype(np.uint8)
+
+            # Collect all spotlight masks and combine them
+            combined_mask = np.zeros((result_frame.shape[0], result_frame.shape[1]), dtype=np.float32)
+
+            for player in spotlight_players:
+                # Get the mask for this spotlight (without actually drawing)
+                mask = self.modern_styles.get_spotlight_mask(
+                    result_frame.shape,
+                    player.current_bbox,
+                    player
+                )
+                # Combine masks using maximum (brightest wins)
+                combined_mask = np.maximum(combined_mask, mask)
+
+            # Apply the combined mask once
+            result_frame = self.modern_styles.apply_spotlight_mask(
+                result_frame,
+                darkened_frame,
+                combined_mask
+            )
+
+            # Draw floor circles for each player
+            for player in spotlight_players:
+                result_frame = self.modern_styles.draw_spotlight_floor_circle(
                     result_frame,
                     player.current_bbox,
-                    player.marker_style,
-                    player.color
+                    (200, 255, 255),  # Cyan beam color
+                    player
                 )
-            else:
-                print(f"  WARNING: Player {player.player_id} has None bbox!")
-        
+
+        # Draw all other (non-spotlight) markers normally
+        for player in other_players:
+            result_frame = self.draw_marker(
+                result_frame,
+                player.current_bbox,
+                player.marker_style,
+                player.color,
+                player
+            )
+
         return result_frame
 
 

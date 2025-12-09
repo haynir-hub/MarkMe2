@@ -104,6 +104,20 @@ class VideoExporter:
                     # CRITICAL: Always update current_bbox - set to None if no tracking data for this frame
                     # This prevents showing bbox from a different frame
                     player.current_bbox = stored_bbox
+
+                    # Calculate current_original_bbox from stored_bbox using padding offset
+                    if stored_bbox is not None and hasattr(player, 'padding_offset') and player.padding_offset != (0, 0, 0, 0):
+                        x, y, w, h = stored_bbox
+                        offset_x, offset_y, offset_w, offset_h = player.padding_offset
+                        # Reverse the padding: original = padded + offset
+                        orig_x = x + offset_x
+                        orig_y = y + offset_y
+                        orig_w = w - offset_w
+                        orig_h = h - offset_h
+                        player.current_original_bbox = (orig_x, orig_y, orig_w, orig_h)
+                    else:
+                        player.current_original_bbox = stored_bbox
+
                     if stored_bbox is None:
                         # Log missing bbox for debugging
                         if frame_idx % 30 == 0:  # Log every 30 frames

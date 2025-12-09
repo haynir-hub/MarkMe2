@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QSpinBox, QLineEdit, QApplication)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor, QKeySequence, QShortcut
-from typing import Optional
+from typing import Optional, Tuple
 import cv2
 import numpy as np
 from pathlib import Path
@@ -257,10 +257,54 @@ class TrackingThread(QThread):
                 for player in players:
                     if not player.tracker.is_initialized:
                         continue
-                    
+
                     # Only update tracker if it's initialized and we're past the initial frame
                     if player.tracker.is_initialized and frame_idx > player.initial_frame:
-                        bbox = player.tracker.update(frame)
+                        # Check if this frame is a learning frame - if so, reinitialize tracker
+                        if frame_idx in player.learning_frames:
+                            # This is a learning frame! Use the exact bbox from learning frame
+                            learning_bbox = player.learning_frames[frame_idx]
+
+                            print(f"🔄 LEARNING FRAME DETECTED! Frame {frame_idx}")
+                            print(f"   Player {player.player_id}: Reinitializing tracker with bbox={learning_bbox}")
+
+                            # Reinitialize tracker with the correct bbox from learning frame
+                            player.tracker.init_tracker(frame, learning_bbox)
+                            bbox = learning_bbox
+
+                            # Also update current_original_bbox from original_learning_frames
+                            if frame_idx in player.original_learning_frames:
+                                player.current_original_bbox = player.original_learning_frames[frame_idx]
+                                print(f"   Updated current_original_bbox to {player.current_original_bbox}")
+                            else:
+                                # Fallback: calculate from padded bbox
+                                if player.padding_offset != (0, 0, 0, 0):
+                                    x, y, w, h = bbox
+                                    offset_x, offset_y, offset_w, offset_h = player.padding_offset
+                                    orig_x = x + offset_x
+                                    orig_y = y + offset_y
+                                    orig_w = w - offset_w
+                                    orig_h = h - offset_h
+                                    player.current_original_bbox = (orig_x, orig_y, orig_w, orig_h)
+                                else:
+                                    player.current_original_bbox = bbox
+                        else:
+                            # Normal tracking update
+                            bbox = player.tracker.update(frame)
+
+                            # Calculate current_original_bbox from current_bbox using padding offset
+                            if bbox is not None and player.padding_offset != (0, 0, 0, 0):
+                                x, y, w, h = bbox
+                                offset_x, offset_y, offset_w, offset_h = player.padding_offset
+                                # Reverse the padding: original = padded + offset
+                                orig_x = x + offset_x
+                                orig_y = y + offset_y
+                                orig_w = w - offset_w
+                                orig_h = h - offset_h
+                                player.current_original_bbox = (orig_x, orig_y, orig_w, orig_h)
+                            else:
+                                player.current_original_bbox = bbox
+
                         player.current_bbox = bbox
                         was_tracking_lost = player.tracking_lost
                         player.tracking_lost = (bbox is None)
@@ -890,15 +934,14 @@ class MainWindow(QMainWindow):
         # Update tracking range info
         self._update_tracking_range_info()
     
-    def _track_single_video(self):
-        """Start tracking for current video only"""
-        project = self.project_manager.get_current_project()
+    def _track_single_video_internal(self, project):
+        """Internal method to track a specific project (used for re-tracking)"""
         if not project or not project.has_players():
             QMessageBox.warning(self, "No Players", "Please mark at least one player before tracking.")
             return
-        
+
         # Start tracking
-        self.status_label.setText("🔄 Tracking current video...")
+        self.status_label.setText("🔄 Re-tracking video...")
         self.progress_bar.setVisible(True)
         
         # Create tracking thread with tracking range
@@ -948,6 +991,15 @@ class MainWindow(QMainWindow):
             """Show preview dialog for project"""
             from .preview_dialog import PreviewDialog
             preview = PreviewDialog(proj.tracker_manager, proj.video_path, self)
+
+            # Connect re-track signal
+            def on_retrack_requested():
+                """Handle re-track request from preview dialog"""
+                # Close current preview (already closed by reject())
+                # Start tracking on this single project
+                self._track_single_video_internal(proj)
+
+            preview.retrack_requested.connect(on_retrack_requested)
             preview.exec()
         
         self.tracking_thread.finished.connect(on_tracking_complete)
@@ -966,9 +1018,19 @@ class MainWindow(QMainWindow):
             )
         
         self.tracking_thread.tracking_lost.connect(on_tracking_lost)
-        
+
         self.tracking_thread.start()
-    
+
+    def _track_single_video(self):
+        """Start tracking for current video only"""
+        project = self.project_manager.get_current_project()
+        if not project or not project.has_players():
+            QMessageBox.warning(self, "No Players", "Please mark at least one player before tracking.")
+            return
+
+        # Use internal method to do the actual tracking
+        self._track_single_video_internal(project)
+
     def _track_all_videos(self):
         """Start tracking for all videos with players"""
         projects_to_track = [p for p in self.project_manager.projects if p.has_players()]
@@ -1691,11 +1753,10 @@ class MainWindow(QMainWindow):
         # Disable detection mode
         self.video_canvas.enable_detection_mode(False)
         
-        # Add padding to bbox for better tracking (especially for rectangle marker)
-        # Padding: 20% on each side, but at least 10 pixels
+        # Add padding to bbox for better tracking (symmetric)
         padding_x = max(int(w * 0.2), 10)
         padding_y = max(int(h * 0.2), 10)
-        
+
         # Adjust bbox with padding
         x_padded = max(0, x - padding_x)
         y_padded = max(0, y - padding_y)
@@ -1711,13 +1772,14 @@ class MainWindow(QMainWindow):
             h_padded = min(h_padded, frame_h - y_padded)
         
         print(f"Added padding: original=({x}, {y}, {w}, {h}), padded=({x_padded}, {y_padded}, {w_padded}, {h_padded})")
-        
-        # Use the padded bbox as if it was manually drawn
-        self._on_bbox_selected(x_padded, y_padded, w_padded, h_padded)
+
+        # Use the padded bbox for tracking, but pass original bbox for accurate marker placement
+        self._on_bbox_selected(x_padded, y_padded, w_padded, h_padded, original_bbox=(x, y, w, h))
     
-    def _on_bbox_selected(self, x: int, y: int, w: int, h: int):
+    def _on_bbox_selected(self, x: int, y: int, w: int, h: int,
+                         original_bbox: Optional[Tuple[int, int, int, int]] = None):
         """Handle bounding box selection (manual or from detection)"""
-        print(f"_on_bbox_selected called: bbox=({x}, {y}, {w}, {h})")
+        print(f"_on_bbox_selected called: bbox=({x}, {y}, {w}, {h}), original_bbox={original_bbox}")
         try:
             # Disable detection mode if active
             self.video_canvas.enable_detection_mode(False)
@@ -1833,7 +1895,7 @@ class MainWindow(QMainWindow):
                 try:
                     # Add player to project
                     player_id = project.add_player(
-                        name, style, self.current_frame_idx, (x, y, w, h)
+                        name, style, self.current_frame_idx, (x, y, w, h), original_bbox
                     )
                     
                     # Get color for style
@@ -2030,6 +2092,19 @@ class MainWindow(QMainWindow):
                 # CRITICAL: Always update current_bbox - set to None if no tracking data for this frame
                 # This prevents showing bbox from a different frame
                 player.current_bbox = stored_bbox
+
+                # Calculate current_original_bbox from stored_bbox using padding offset
+                if stored_bbox is not None and hasattr(player, 'padding_offset') and player.padding_offset != (0, 0, 0, 0):
+                    x, y, w, h = stored_bbox
+                    offset_x, offset_y, offset_w, offset_h = player.padding_offset
+                    # Reverse the padding: original = padded + offset
+                    orig_x = x + offset_x
+                    orig_y = y + offset_y
+                    orig_w = w - offset_w
+                    orig_h = h - offset_h
+                    player.current_original_bbox = (orig_x, orig_y, orig_w, orig_h)
+                else:
+                    player.current_original_bbox = stored_bbox
             
             # Draw overlays only if frame is in tracking range
             frame_with_overlay = overlay_renderer.draw_all_markers(
@@ -2061,9 +2136,9 @@ class MainWindow(QMainWindow):
             selector = PlayerSelector(fullscreen_window)
             
             def on_confirmed(name: str, style: str):
-                # Add player to project
+                # Add player to project (manual bbox selection, no padding)
                 player_id = project.add_player(
-                    name, style, self.current_frame_idx, (x, y, w, h)
+                    name, style, self.current_frame_idx, (x, y, w, h), None
                 )
                 
                 # Get color for style
@@ -2284,9 +2359,14 @@ class MainWindow(QMainWindow):
                 from ..render.overlay_renderer import OverlayRenderer
                 renderer = OverlayRenderer()
                 players = tracker_manager.get_all_players()
-                
-                # If tracking is complete, use stored tracking results
-                if project.status == ProjectStatus.TRACKED:
+
+                # Debug: print status
+                if frame_idx % 30 == 0:
+                    print(f"🔍 Frame {frame_idx}: project.status={project.status}")
+
+                # If tracking results exist, use them (status might be TRACKED or MARKED if tracking just finished)
+                has_tracking_results = len(tracker_manager.tracking_results) > 0
+                if has_tracking_results:
                     # Update current_bbox from stored tracking results
                     # CRITICAL: Always update current_bbox - set to None if no tracking data for this frame
                     # This prevents showing bbox from a different frame
@@ -2295,6 +2375,23 @@ class MainWindow(QMainWindow):
                             player.player_id, frame_idx
                         )
                         player.current_bbox = stored_bbox
+
+                        # Calculate current_original_bbox from stored_bbox using padding offset
+                        if stored_bbox is not None and hasattr(player, 'padding_offset') and player.padding_offset != (0, 0, 0, 0):
+                            x, y, w, h = stored_bbox
+                            offset_x, offset_y, offset_w, offset_h = player.padding_offset
+                            # Reverse the padding: original = padded + offset
+                            orig_x = x + offset_x
+                            orig_y = y + offset_y
+                            orig_w = w - offset_w
+                            orig_h = h - offset_h
+                            player.current_original_bbox = (orig_x, orig_y, orig_w, orig_h)
+                            if frame_idx % 10 == 0:
+                                print(f"📍 Frame {frame_idx}: stored_bbox={stored_bbox}, offset={player.padding_offset}, current_original_bbox={player.current_original_bbox}")
+                        else:
+                            player.current_original_bbox = stored_bbox
+                            if frame_idx % 10 == 0:
+                                print(f"⚠️ Frame {frame_idx}: No padding_offset! hasattr={hasattr(player, 'padding_offset')}, value={getattr(player, 'padding_offset', None)}")
                 else:
                     # Tracking not started yet - show markers only on frames where players were marked
                     for player in players:
@@ -2314,13 +2411,13 @@ class MainWindow(QMainWindow):
                 # For post-tracking: respect tracking range
                 tracking_start = project.trim_start_frame if project.trim_start_frame is not None else 0
                 tracking_end = project.trim_end_frame if project.trim_end_frame is not None else (tracker_manager.total_frames - 1)
-                
+
                 frame_with_overlay = renderer.draw_all_markers(
-                    frame, 
+                    frame,
                     players,
                     frame_idx=frame_idx,
-                    tracking_start_frame=tracking_start if project.status == ProjectStatus.TRACKED else None,  # Only enforce range if tracked
-                    tracking_end_frame=tracking_end if project.status == ProjectStatus.TRACKED else None
+                    tracking_start_frame=tracking_start if has_tracking_results else None,  # Only enforce range if tracking done
+                    tracking_end_frame=tracking_end if has_tracking_results else None
                 )
                 self.video_canvas.set_frame(frame_with_overlay)
             else:
@@ -2477,7 +2574,20 @@ class MainWindow(QMainWindow):
                 player.player_id, self.current_frame_idx
             )
             player.current_bbox = stored_bbox
-        
+
+            # Calculate current_original_bbox from stored_bbox using padding offset
+            if stored_bbox is not None and hasattr(player, 'padding_offset') and player.padding_offset != (0, 0, 0, 0):
+                x, y, w, h = stored_bbox
+                offset_x, offset_y, offset_w, offset_h = player.padding_offset
+                # Reverse the padding: original = padded + offset
+                orig_x = x + offset_x
+                orig_y = y + offset_y
+                orig_w = w - offset_w
+                orig_h = h - offset_h
+                player.current_original_bbox = (orig_x, orig_y, orig_w, orig_h)
+            else:
+                player.current_original_bbox = stored_bbox
+
         frame_with_overlay = renderer.draw_all_markers(frame, players)
         self.video_canvas.set_frame(frame_with_overlay)
         

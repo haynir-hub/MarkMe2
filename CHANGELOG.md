@@ -387,5 +387,5 @@ Video exported with audio successfully
 - אם עדיין יש בעיות, שלח צילום מסך + copy/paste של כל התוכן מ-PowerShell
 - ודא ש-FFmpeg מותקן: `ffmpeg -version`
 - ודא ש-opencv-contrib-python מותקן: `pip list | findstr opencv`
-- במקרה של בעיה, הרץ: `reinstall.bat`
+- במקרה של בעיה, הרץ: `scripts/reinstall.bat`
 

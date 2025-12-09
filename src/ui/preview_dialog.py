@@ -23,6 +23,8 @@ class PreviewDialog(QDialog):
     fix_tracking_requested = pyqtSignal(int, int, int, int, int, int)  # frame_idx, x, y, w, h, player_id
     # Signal when user wants to resume tracking from a specific frame
     resume_tracking_requested = pyqtSignal(int, int, int, int, int, int)  # frame_idx, x, y, w, h, player_id
+    # Signal when user wants to re-track the entire video
+    retrack_requested = pyqtSignal()
     
     def __init__(self, tracker_manager: TrackerManager, video_path: str, parent=None,
                  tracking_start_frame: Optional[int] = None, tracking_end_frame: Optional[int] = None):
@@ -150,14 +152,23 @@ class PreviewDialog(QDialog):
         self.fix_tracking_btn.clicked.connect(self._start_fix_tracking)
         self.fix_tracking_btn.setToolTip("Draw a new bbox on current frame to mark where tracking should be corrected.")
         fix_tracking_buttons.addWidget(self.fix_tracking_btn)
-        
+
         self.resume_tracking_btn = QPushButton("▶ Resume Tracking from Fix Point")
         self.resume_tracking_btn.clicked.connect(self._resume_tracking_from_fix)
         self.resume_tracking_btn.setToolTip("Resume tracking from the marked fix point. Previous tracking data will be preserved.")
         self.resume_tracking_btn.setEnabled(False)  # Disabled until fix point is marked
         fix_tracking_buttons.addWidget(self.resume_tracking_btn)
-        
+
         fix_tracking_layout.addLayout(fix_tracking_buttons)
+
+        # Re-track button (NEW!)
+        retrack_button_layout = QHBoxLayout()
+        self.retrack_btn = QPushButton("🔄 Re-track Entire Video")
+        self.retrack_btn.clicked.connect(self._on_retrack_requested)
+        self.retrack_btn.setToolTip("Re-run tracking on this video from scratch with all learning frames. This will replace the current tracking results.")
+        self.retrack_btn.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold; padding: 8px;")
+        retrack_button_layout.addWidget(self.retrack_btn)
+        fix_tracking_layout.addLayout(retrack_button_layout)
         
         layout.addLayout(fix_tracking_layout)
         
@@ -257,12 +268,19 @@ class PreviewDialog(QDialog):
             # CRITICAL: Always update current_bbox - set to None if no tracking data for this frame
             # This prevents showing bbox from a different frame
             player.current_bbox = stored_bbox
-        
-        # Log first frame for debugging
-        if frame_idx == 0:
-            print(f"[Preview] Frame 0: Drawing {len(players)} players")
-            for player in players:
-                print(f"  Player ID: {player.player_id}, Name: {player.name}, Bbox: {player.current_bbox}, Style: {player.marker_style}")
+
+            # Calculate current_original_bbox from stored_bbox using padding offset
+            if stored_bbox is not None and hasattr(player, 'padding_offset') and player.padding_offset != (0, 0, 0, 0):
+                x, y, w, h = stored_bbox
+                offset_x, offset_y, offset_w, offset_h = player.padding_offset
+                # Reverse the padding: original = padded + offset
+                orig_x = x + offset_x
+                orig_y = y + offset_y
+                orig_w = w - offset_w
+                orig_h = h - offset_h
+                player.current_original_bbox = (orig_x, orig_y, orig_w, orig_h)
+            else:
+                player.current_original_bbox = stored_bbox
         
         # Draw overlays only if frame is in tracking range
         frame_with_overlay = self.overlay_renderer.draw_all_markers(
@@ -411,17 +429,19 @@ class PreviewDialog(QDialog):
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "No Players", "No players to fix tracking for.")
             return
-        
+
         if len(players) == 1:
             # Only one player - use it
             self._fix_player_id = players[0].player_id
+            player_name = players[0].name
             self._waiting_for_fix_bbox = True
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.information(
                 self,
-                "Fix Tracking",
-                f"Draw a new bounding box on the current frame (Frame {self.current_frame_idx + 1}) to restart tracking for '{players[0].name}'.\n\n"
-                f"Tracking will restart from this frame with the new bbox."
+                "תיקון מעקב - Draw Fix Point",
+                f"צייר מלבן חדש סביב '{player_name}' בפריים הנוכחי (פריים {self.current_frame_idx + 1}).\n\n"
+                f"Draw a new bounding box around the player to mark the correct position.\n"
+                f"Tracking will be corrected from this point forward."
             )
         else:
             # Multiple players - let user choose
@@ -430,7 +450,7 @@ class PreviewDialog(QDialog):
             player_name, ok = QInputDialog.getItem(
                 self,
                 "Select Player",
-                "Which player's tracking do you want to fix?",
+                "באיזה שחקן רוצה לתקן את המעקב? Which player to fix?",
                 player_names,
                 0,
                 False
@@ -444,9 +464,10 @@ class PreviewDialog(QDialog):
                         from PyQt6.QtWidgets import QMessageBox
                         QMessageBox.information(
                             self,
-                            "Fix Tracking",
-                            f"Draw a new bounding box on the current frame (Frame {self.current_frame_idx + 1}) to restart tracking for '{player_name}'.\n\n"
-                            f"Tracking will restart from this frame with the new bbox."
+                            "תיקון מעקב - Draw Fix Point",
+                            f"צייר מלבן חדש סביב '{player_name}' בפריים הנוכחי (פריים {self.current_frame_idx + 1}).\n\n"
+                            f"Draw a new bounding box around the player to mark the correct position.\n"
+                            f"Tracking will be corrected from this point forward."
                         )
                         break
     
@@ -490,20 +511,41 @@ class PreviewDialog(QDialog):
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "No Fix Point", "Please mark a fix point first.")
             return
-        
+
         # Emit signal to resume tracking
         self.resume_tracking_requested.emit(
             self._fix_frame_idx,
             self._fix_bbox[0], self._fix_bbox[1], self._fix_bbox[2], self._fix_bbox[3],
             self._fix_player_id
         )
-        
+
         # Reset fix point
         self._fix_frame_idx = None
         self._fix_bbox = None
         self._fix_player_id = None
         self.resume_tracking_btn.setEnabled(False)
-    
+
+    def _on_retrack_requested(self):
+        """Handle re-track entire video request"""
+        from PyQt6.QtWidgets import QMessageBox
+
+        # Confirm with user
+        reply = QMessageBox.question(
+            self,
+            "Re-track Video",
+            "This will re-run tracking on the entire video with all marked learning frames.\n\n"
+            "Current tracking results will be replaced.\n\n"
+            "Are you sure you want to continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Emit signal to trigger re-tracking
+            self.retrack_requested.emit()
+            # Close preview dialog - main window will handle re-tracking and show new preview
+            self.reject()
+
     def is_approved(self) -> bool:
         """Check if user approved export"""
         return self.approved

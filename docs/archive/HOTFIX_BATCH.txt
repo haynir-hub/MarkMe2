@@ -1,0 +1,74 @@
+=== 🔧 תיקון מהיר: TypeError ב-_update_buttons ===
+
+## ❌ הבעיה:
+```
+TypeError: setEnabled(self, a0: bool): argument 1 has unexpected type 'NoneType'
+```
+
+השגיאה קרתה כי:
+```python
+has_players = current_project and current_project.has_players()
+```
+
+אם `current_project` הוא `None`, אז הביטוי מחזיר `None` במקום `False`.
+
+---
+
+## ✅ התיקון:
+
+### שורה 458 (לפני):
+```python
+has_players = current_project and current_project.has_players()
+```
+
+### שורה 458 (אחרי):
+```python
+has_players = bool(current_project and current_project.has_players())
+```
+
+זה מבטיח שהתוצאה תמיד תהיה `bool` (`True` או `False`) ולא `None`.
+
+### שורה 464 (לפני):
+```python
+self.export_single_btn.setEnabled(has_players and current_project.status == ProjectStatus.MARKED)
+```
+
+### שורות 466-468 (אחרי):
+```python
+# Export single button: enabled only if has players and status is MARKED
+can_export_single = has_players and current_project and current_project.status == ProjectStatus.MARKED
+self.export_single_btn.setEnabled(can_export_single)
+```
+
+זה מוסיף בדיקה ש-`current_project` לא `None` לפני הגישה ל-`.status`.
+
+---
+
+## 🚀 איך לנסות שוב:
+
+1. **הקובץ כבר תוקן אוטומטית!**
+
+2. **הפעל מחדש:**
+   ```
+   לחץ כפול על: run.bat
+   ```
+
+3. **נסה שוב:**
+   ```
+   ➕ Add Videos → בחר סרטונים
+   ```
+
+עכשיו זה צריך לעבוד ללא שגיאות! ✅
+
+---
+
+## 📝 מה השתנה:
+- ✅ `src/ui/main_window.py` - תיקון `_update_buttons()`
+- ✅ השתמשתי ב-`bool()` wrapper
+- ✅ הוספתי בדיקת `None` לפני גישה ל-`.status`
+
+---
+
+**נסה עכשיו! זה צריך לעבוד מושלם 🎉**
+
+

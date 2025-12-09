@@ -101,7 +101,7 @@ class PlayerSelector(QDialog):
             0: "arrow",
             1: "circle",
             2: "rectangle",
-            3: "spotlight",
+            3: "spotlight_modern",
             4: "neon_ring",
             5: "pulse",
             6: "gradient",

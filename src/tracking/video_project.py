@@ -72,10 +72,11 @@ class VideoProject:
             self.status = ProjectStatus.FAILED
             return False
     
-    def add_player(self, name: str, marker_style: str, 
-                   initial_frame: int, bbox: Tuple[int, int, int, int]) -> int:
+    def add_player(self, name: str, marker_style: str,
+                   initial_frame: int, bbox: Tuple[int, int, int, int],
+                   original_bbox: Optional[Tuple[int, int, int, int]] = None) -> int:
         """Add player to track"""
-        player_id = self.tracker_manager.add_player(name, marker_style, initial_frame, bbox)
+        player_id = self.tracker_manager.add_player(name, marker_style, initial_frame, bbox, original_bbox)
         
         # Update status to marked if we have players
         if len(self.tracker_manager.players) > 0:

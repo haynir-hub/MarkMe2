@@ -115,3 +115,4 @@ pip install opencv-contrib-python>=4.8.0
 
 תוכנה זו נוצרה לשימוש מקומי בלבד.
 
+# MarkMe2

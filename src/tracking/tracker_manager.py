@@ -55,7 +55,13 @@ class PlayerData:
             'circle': (0, 255, 255),       # Yellow (for 3D floor hoop)
             'rectangle': (255, 100, 0),    # Blue (forced in renderer)
             'spotlight': (0, 200, 255),    # Orange
-            'outline': (255, 0, 255)       # Magenta
+            'spotlight_modern': (200, 255, 255),  # Cyan/white beam
+            'outline': (255, 0, 255),      # Magenta
+            'nba_iso_ring': (0, 215, 255), # Gold/Cyan glow
+            'floating_chevron': (0, 255, 0),  # Bright green for aerial chevron
+            'crosshair': (255, 255, 0),       # Neon cyan tactical scope
+            'tactical_brackets': (0, 215, 255), # Brackets in same broadcast yellow
+            'sonar_ripple': (0, 215, 255)     # Floor ripple in broadcast yellow
         }
         return color_map.get(self.marker_style, (255, 255, 255))
 
@@ -422,3 +428,166 @@ class TrackerManager:
             self.video_cap.release()
             self.video_cap = None
 
+    def generate_tracking_data(self, start_frame: int = 0,
+                              end_frame: Optional[int] = None,
+                              progress_callback=None) -> Dict[int, Dict[int, Dict[str, any]]]:
+        """
+        Phase 1 of two-phase tracking: Generate raw tracking data without rendering.
+
+        This function runs tracking on all players and stores coordinates with confidence scores.
+        The data can then be reviewed and corrected before final export.
+
+        Args:
+            start_frame: Starting frame index (default: 0)
+            end_frame: Ending frame index (default: last frame)
+            progress_callback: Optional callback(current_frame, total_frames)
+
+        Returns:
+            Dictionary with structure:
+            {
+                player_id: {
+                    frame_index: {
+                        'bbox': (x, y, w, h),
+                        'confidence': float,  # Tracker confidence (0.0-1.0)
+                        'is_learning_frame': bool  # True if this was a user-marked frame
+                    }
+                }
+            }
+
+        Example:
+            >>> tracker_manager.load_video("video.mp4")
+            >>> tracker_manager.add_player("Player 1", "circle", 0, (100, 100, 50, 50))
+            >>> data = tracker_manager.generate_tracking_data(0, 100)
+            >>> # Review data, identify problematic frames
+            >>> # Add corrections via add_learning_frame_to_player()
+            >>> # Re-run generate_tracking_data() or just export
+        """
+        if self.video_path is None:
+            raise ValueError("No video loaded. Call load_video() first.")
+
+        if end_frame is None:
+            end_frame = self.total_frames - 1
+
+        # Validate frame range
+        end_frame = min(end_frame, self.total_frames - 1)
+        if start_frame < 0 or start_frame > end_frame:
+            raise ValueError(f"Invalid frame range: {start_frame}-{end_frame}")
+
+        print(f"🎯 Phase 1: Generating tracking data for frames {start_frame}-{end_frame}")
+        print(f"   Players to track: {len(self.players)}")
+
+        # Open video capture for sequential reading (faster than seeking)
+        cap = cv2.VideoCapture(self.video_path)
+        if not cap.isOpened():
+            raise RuntimeError(f"Failed to open video: {self.video_path}")
+
+        # Initialize tracking data structure
+        tracking_data: Dict[int, Dict[int, Dict[str, any]]] = {}
+        for player_id in self.players:
+            tracking_data[player_id] = {}
+
+        # Seek to start frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        actual_pos = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+
+        # If seeking failed, read sequentially from beginning
+        if actual_pos != start_frame:
+            print(f"⚠️  Seeking failed (wanted {start_frame}, got {actual_pos}). Reading sequentially...")
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            for i in range(start_frame):
+                ret, _ = cap.read()
+                if not ret:
+                    cap.release()
+                    raise RuntimeError(f"Failed to read to start frame {start_frame}")
+
+        # Main tracking loop
+        for current_frame_idx in range(start_frame, end_frame + 1):
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                print(f"⚠️  Failed to read frame {current_frame_idx}, stopping")
+                break
+
+            # Update progress
+            if progress_callback:
+                progress_callback(current_frame_idx - start_frame + 1, end_frame - start_frame + 1)
+
+            # Track each player
+            for player_id, player in self.players.items():
+                is_learning_frame = current_frame_idx in player.learning_frames
+
+                # Initialize or reinitialize tracker at learning frames
+                if current_frame_idx == start_frame or is_learning_frame:
+                    # Use learning frame bbox if available, otherwise use player's initial bbox
+                    if is_learning_frame:
+                        init_bbox = player.learning_frames[current_frame_idx]
+                        print(f"🔄 Frame {current_frame_idx}: Reinitializing player {player_id} with learning frame bbox={init_bbox}")
+                    elif current_frame_idx == start_frame:
+                        # Find closest learning frame to start_frame
+                        learning_frames_sorted = sorted(player.learning_frames.keys())
+                        closest_frame = min(learning_frames_sorted, key=lambda f: abs(f - start_frame))
+                        init_bbox = player.learning_frames[closest_frame]
+                        print(f"🔄 Frame {current_frame_idx}: Initializing player {player_id} with closest learning frame (frame {closest_frame}) bbox={init_bbox}")
+
+                    player.tracker.init(frame, init_bbox)
+                    bbox = init_bbox
+                    success = True
+                    confidence = 1.0  # Learning frames have perfect confidence
+                else:
+                    # Normal tracking update
+                    bbox = player.tracker.update(frame)
+                    success = (bbox is not None)
+
+                    # Calculate confidence based on tracker success
+                    # TODO: Improve confidence calculation (can use IoU with previous frame, tracker score, etc.)
+                    confidence = 0.8 if success else 0.0
+
+                # Store tracking data
+                if success and bbox is not None:
+                    tracking_data[player_id][current_frame_idx] = {
+                        'bbox': bbox,
+                        'confidence': confidence,
+                        'is_learning_frame': is_learning_frame
+                    }
+
+                    # Also update tracking_results for compatibility with existing export code
+                    if player_id not in self.tracking_results:
+                        self.tracking_results[player_id] = {}
+                    self.tracking_results[player_id][current_frame_idx] = bbox
+                else:
+                    # Track was lost - store None to indicate gap
+                    tracking_data[player_id][current_frame_idx] = {
+                        'bbox': None,
+                        'confidence': 0.0,
+                        'is_learning_frame': is_learning_frame
+                    }
+
+                    if player_id not in self.tracking_results:
+                        self.tracking_results[player_id] = {}
+                    self.tracking_results[player_id][current_frame_idx] = None
+
+            # Log progress every 50 frames
+            if current_frame_idx % 50 == 0:
+                print(f"  ⚡ Processed {current_frame_idx - start_frame + 1}/{end_frame - start_frame + 1} frames")
+
+        cap.release()
+
+        # Summary statistics
+        print(f"\n✅ Phase 1 Complete: Generated tracking data")
+        for player_id, player in self.players.items():
+            frames_tracked = len([f for f in tracking_data[player_id] if tracking_data[player_id][f]['bbox'] is not None])
+            frames_lost = len([f for f in tracking_data[player_id] if tracking_data[player_id][f]['bbox'] is None])
+            learning_frames_count = len([f for f in tracking_data[player_id] if tracking_data[player_id][f]['is_learning_frame']])
+            avg_confidence = sum([tracking_data[player_id][f]['confidence'] for f in tracking_data[player_id]]) / len(tracking_data[player_id]) if tracking_data[player_id] else 0.0
+
+            print(f"   Player {player_id} ({player.name}):")
+            print(f"      Frames tracked: {frames_tracked}")
+            print(f"      Frames lost: {frames_lost}")
+            print(f"      Learning frames used: {learning_frames_count}")
+            print(f"      Average confidence: {avg_confidence:.2f}")
+
+        print(f"\n💡 Next steps:")
+        print(f"   1. Review tracking data to identify problematic frames")
+        print(f"   2. Add corrections with add_learning_frame_to_player()")
+        print(f"   3. Re-run generate_tracking_data() or export directly")
+
+        return tracking_data

@@ -6,13 +6,14 @@ Tracking Review Dialog - UI for reviewing and correcting tracking data
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QSlider, QListWidget, QListWidgetItem,
                              QSplitter, QWidget, QProgressBar, QCheckBox,
-                             QSpinBox, QGroupBox, QScrollArea)
+                             QSpinBox, QGroupBox, QScrollArea, QMessageBox)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor
 import cv2
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 from ..tracking.tracker_manager import TrackerManager
+from .bbox_editor import BboxEditor
 
 
 class ConfidenceGraph(QWidget):
@@ -240,15 +241,15 @@ class TrackingReviewDialog(QDialog):
         # Middle section: Video preview and problematic frames list
         middle_splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Video preview
+        # Video preview with bbox editor
         preview_widget = QWidget()
         preview_layout = QVBoxLayout()
 
-        self.video_label = QLabel("טוען וידאו...")
-        self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.video_label.setMinimumSize(640, 480)
-        self.video_label.setStyleSheet("background-color: black; color: white;")
-        preview_layout.addWidget(self.video_label)
+        self.bbox_editor = BboxEditor()
+        self.bbox_editor.setMinimumSize(640, 480)
+        self.bbox_editor.setStyleSheet("background-color: black;")
+        self.bbox_editor.bbox_changed.connect(self._on_bbox_edited)
+        preview_layout.addWidget(self.bbox_editor)
 
         # Frame controls
         controls_layout = QHBoxLayout()
@@ -470,57 +471,23 @@ class TrackingReviewDialog(QDialog):
         self._display_frame(frame_idx)
 
     def _display_frame(self, frame_idx: int):
-        """Display frame with tracking overlay"""
+        """Display frame with bbox editor"""
         # Get frame
         frame = self.tracker_manager.get_frame(frame_idx)
         if frame is None:
-            self.video_label.setText(f"שגיאה בטעינת פריים {frame_idx}")
+            # Show error in bbox editor
             return
 
-        # Draw tracking overlay if available
+        # Get bbox for current player at this frame
+        bbox = None
         if self.current_player_id is not None:
             player_data = self.tracking_data.get(self.current_player_id, {})
             if frame_idx in player_data:
                 data = player_data[frame_idx]
                 bbox = data.get('bbox')
-                confidence = data.get('confidence', 0.0)
-                is_learning = data.get('is_learning_frame', False)
 
-                if bbox is not None:
-                    x, y, w, h = [int(v) for v in bbox]
-
-                    # Choose color based on confidence
-                    if is_learning:
-                        color = (255, 215, 0)  # Gold for learning frames
-                        thickness = 3
-                    elif confidence < 0.5:
-                        color = (0, 0, 255)  # Red for low confidence
-                        thickness = 2
-                    else:
-                        color = (0, 255, 0)  # Green for good tracking
-                        thickness = 2
-
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), color, thickness)
-
-                    # Draw confidence text
-                    text = f"{confidence:.2f}"
-                    if is_learning:
-                        text = f"LEARNING {text}"
-                    cv2.putText(frame, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX,
-                              0.5, color, 2)
-
-        # Convert to QPixmap and display
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        h, w, ch = frame_rgb.shape
-        bytes_per_line = ch * w
-        qt_image = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-
-        # Scale to fit label while maintaining aspect ratio
-        pixmap = QPixmap.fromImage(qt_image)
-        scaled_pixmap = pixmap.scaled(self.video_label.size(),
-                                      Qt.AspectRatioMode.KeepAspectRatio,
-                                      Qt.TransformationMode.SmoothTransformation)
-        self.video_label.setPixmap(scaled_pixmap)
+        # Update bbox editor with frame and bbox
+        self.bbox_editor.set_frame(frame, bbox)
 
         # Update info labels
         self.frame_info_label.setText(f"פריים: {frame_idx} / {self.tracker_manager.total_frames - 1}")
@@ -547,19 +514,59 @@ class TrackingReviewDialog(QDialog):
         if self.current_frame_idx < self.tracker_manager.total_frames - 1:
             self._jump_to_frame(self.current_frame_idx + 1)
 
+    def _on_bbox_edited(self, bbox: Tuple[int, int, int, int]):
+        """Handle bbox edit - add as learning frame"""
+        if self.current_player_id is None:
+            return
+
+        # Add as learning frame
+        self.tracker_manager.add_learning_frame_to_player(
+            self.current_player_id,
+            self.current_frame_idx,
+            bbox,
+            original_bbox=bbox  # For simplicity, use same bbox
+        )
+
+        # Update tracking data
+        if self.current_player_id not in self.tracking_data:
+            self.tracking_data[self.current_player_id] = {}
+
+        self.tracking_data[self.current_player_id][self.current_frame_idx] = {
+            'bbox': bbox,
+            'confidence': 1.0,  # Learning frames have perfect confidence
+            'is_learning_frame': True
+        }
+
+        # Update display
+        self._display_frame(self.current_frame_idx)
+        self._update_problems_list()
+        self._update_statistics()
+
+        print(f"✅ Added learning frame at frame {self.current_frame_idx} for player {self.current_player_id}")
+        print(f"   Bbox: {bbox}")
+
     def _fix_current_frame(self):
         """Mark current frame for manual correction"""
-        # TODO: Implement manual bbox marking
-        # For now, just show message
-        from PyQt6.QtWidgets import QMessageBox
+        if self.current_player_id is None:
+            QMessageBox.warning(
+                self,
+                "אין שחקן נבחר - No Player Selected",
+                "בחר שחקן מהרשימה לפני תיקון.\nSelect a player from the list before fixing."
+            )
+            return
+
         QMessageBox.information(
             self,
             "תיקון ידני - Manual Correction",
-            f"תכונה זו תאפשר סימון ידני של ה-bbox בפריים {self.current_frame_idx}.\n"
-            f"זה יוסיף learning frame חדש ויעדכן את המעקב.\n\n"
-            f"This feature will allow manual bbox marking in frame {self.current_frame_idx}.\n"
-            f"It will add a new learning frame and update tracking.\n\n"
-            f"(בפיתוח - In Development)"
+            "גרור bbox על הפריים או צייר bbox חדש.\n"
+            "השינויים יישמרו אוטומטית כ-learning frame.\n\n"
+            "Drag the bbox or draw a new one.\n"
+            "Changes will be automatically saved as a learning frame.\n\n"
+            "טיפים:\n"
+            "- גרור פינות לשינוי גודל\n"
+            "- גרור אמצע להזזה\n"
+            "- ESC לביטול\n"
+            "- Delete למחיקה"
         )
 
     def _re_track(self):

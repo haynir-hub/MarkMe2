@@ -177,37 +177,35 @@ class VideoExporter:
             self._cleanup_temp_files()
             return False
     
-    def _add_audio_with_ffmpeg(self, input_video: str, video_no_audio: str, 
+    def _add_audio_with_ffmpeg(self, input_video: str, video_no_audio: str,
                                output_path: str) -> bool:
         """
         Add audio from original video to processed video using FFmpeg (FAST!)
-        
+
         Args:
             input_video: Original video with audio
             video_no_audio: Processed video without audio
             output_path: Final output path
-            
+
         Returns:
             True if successful
         """
         try:
-            # Ultra-fast FFmpeg command - copy BOTH streams (no re-encoding!)
-            # First, try to copy audio without re-encoding (fastest)
+            # Strategy 1: Try to copy both video and audio (fastest - no re-encoding at all!)
+            print("Running FFmpeg to add audio (Strategy 1: copy both streams)...")
             cmd = [
                 'ffmpeg', '-y',
                 '-i', video_no_audio,  # Video input (no audio)
                 '-i', input_video,     # Audio source
-                '-c:v', 'libx264',     # Re-encode video with libx264 for compatibility
-                '-preset', 'ultrafast', # Fastest encoding preset
-                '-crf', '23',          # Good quality
-                '-c:a', 'copy',        # Copy audio stream (no re-encoding = FASTEST!)
+                '-c:v', 'copy',        # Copy video stream (no re-encoding!)
+                '-c:a', 'aac',         # Re-encode audio to AAC for compatibility
+                '-b:a', '192k',        # High quality audio
                 '-map', '0:v:0',       # Use video from first input
-                '-map', '1:a:0?',      # Use audio from second input (optional)
+                '-map', '1:a:0?',      # Use audio from second input (optional - won't fail if no audio)
                 '-shortest',           # Match shortest stream duration
                 output_path
             ]
-            
-            print("Running FFmpeg to add audio...")
+
             result = subprocess.run(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -215,24 +213,60 @@ class VideoExporter:
                 text=True,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
-            
-            if result.returncode != 0:
-                print(f"FFmpeg audio merge failed: {result.stderr}")
-                # Try without audio if audio merge fails
-                print("Trying without audio...")
-                import shutil
-                shutil.copy2(video_no_audio, output_path)
+
+            if result.returncode == 0:
+                print("✅ Successfully added audio using stream copy")
                 return True
-            
+
+            print(f"⚠️ Strategy 1 failed: {result.stderr}")
+
+            # Strategy 2: Re-encode video but keep audio quality
+            print("Running FFmpeg to add audio (Strategy 2: re-encode video)...")
+            cmd2 = [
+                'ffmpeg', '-y',
+                '-i', video_no_audio,  # Video input (no audio)
+                '-i', input_video,     # Audio source
+                '-c:v', 'libx264',     # Re-encode video with libx264 for compatibility
+                '-preset', 'fast',     # Fast encoding preset (better quality than ultrafast)
+                '-crf', '18',          # High quality
+                '-c:a', 'aac',         # Re-encode audio to AAC
+                '-b:a', '192k',        # High quality audio
+                '-map', '0:v:0',       # Use video from first input
+                '-map', '1:a:0?',      # Use audio from second input (optional)
+                '-shortest',           # Match shortest stream duration
+                output_path
+            ]
+
+            result2 = subprocess.run(
+                cmd2,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+
+            if result2.returncode == 0:
+                print("✅ Successfully added audio with re-encoding")
+                return True
+
+            print(f"⚠️ Strategy 2 failed: {result2.stderr}")
+
+            # Strategy 3: Just copy video without audio as last resort
+            print("❌ Audio merge failed, copying video without audio...")
+            import shutil
+            shutil.copy2(video_no_audio, output_path)
+            print("⚠️ WARNING: Video exported WITHOUT audio!")
             return True
-            
+
         except FileNotFoundError:
             print("❌ FFmpeg not found! Copying video without audio...")
             import shutil
             shutil.copy2(video_no_audio, output_path)
+            print("⚠️ WARNING: Install FFmpeg to enable audio in exported videos!")
             return True
         except Exception as e:
             print(f"Error adding audio: {e}")
+            traceback.print_exc()
             return False
     
     def _export_with_ffmpeg(self, input_path: str, output_path: str,

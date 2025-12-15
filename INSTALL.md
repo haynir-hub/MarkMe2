@@ -21,15 +21,37 @@ pip install numpy>=1.24.0
 pip install ffmpeg-python>=0.2.0
 ```
 
-## שלב 4: ודא שיש FFmpeg במערכת
-- **Windows**: הורד מ-https://ffmpeg.org/download.html והוסף את התיקייה bin ל-PATH
-- **Linux**: `sudo apt-get install ffmpeg`
-- **macOS**: `brew install ffmpeg`
+## שלב 4: התקן FFmpeg (חובה לשמירת אודיו!)
+**חשוב מאוד**: FFmpeg נדרש כדי לשמור את הסאונד המקורי בקבצי הוידאו המיוצאים!
 
-בדוק שזה עובד:
+### macOS (המערכת שלך):
+```bash
+chmod +x scripts/install_ffmpeg.sh
+./scripts/install_ffmpeg.sh
+```
+
+או באופן ידני:
+```bash
+brew install ffmpeg
+```
+
+### Windows:
+1. הורד מ-https://ffmpeg.org/download.html
+2. חלץ את הקבצים
+3. הוסף את התיקייה `bin` ל-PATH
+
+### Linux:
+```bash
+sudo apt-get install ffmpeg
+```
+
+### בדיקה שהכל עובד:
 ```bash
 ffmpeg -version
 ```
+
+אם אתה רואה את גרסת FFmpeg - הכל בסדר! ✅
+אם אתה רואה "command not found" - חזור על שלב 4.
 
 ## שלב 5: הפעל את התוכנה
 לחץ פעמיים על `run.bat` (Windows) או הרץ:

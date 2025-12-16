@@ -2,7 +2,19 @@
   "permissions": {
     "allow": [
       "Bash(python -m src.main:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(chmod:*)",
+      "Bash(pip install:*)",
+      "Bash(python3 -m pip install:*)",
+      "Bash(python3:*)",
+      "Bash(export PATH=\"$HOME/bin:$PATH\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git reset:*)",
+      "Bash(find:*)",
+      "Bash(pkill:*)"
     ],
     "deny": [],
     "ask": []

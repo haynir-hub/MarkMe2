@@ -68,6 +68,10 @@ class PlayerData:
 
 class TrackerManager:
     """Manages multiple player trackers"""
+
+    # Failure detection thresholds
+    MAX_SIZE_CHANGE_FACTOR = 0.20   # 20% size change between frames
+    MAX_CENTER_SHIFT_FACTOR = 0.10  # 10% center shift relative to box size
     
     def __init__(self):
         self.players: Dict[int, PlayerData] = {}
@@ -486,6 +490,9 @@ class TrackerManager:
         for player_id in self.players:
             tracking_data[player_id] = {}
 
+        # Track last successful bbox per player for failure detection
+        previous_bboxes: Dict[int, Optional[Tuple[int, int, int, int]]] = {}
+
         # Seek to start frame
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         actual_pos = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
@@ -500,6 +507,17 @@ class TrackerManager:
                     cap.release()
                     raise RuntimeError(f"Failed to read to start frame {start_frame}")
 
+        # Precompute sorted learning frames for each player (for safe initialization)
+        player_learning_frames_sorted: Dict[int, List[int]] = {}
+        for player_id, player in self.players.items():
+            if player.learning_frames:
+                player_learning_frames_sorted[player_id] = sorted(player.learning_frames.keys())
+            else:
+                # This should normally never happen, but guard against race conditions
+                print(f"⚠️  Player {player_id} has no learning_frames; "
+                      f"tracking will use initial bbox only and may be less accurate.")
+                player_learning_frames_sorted[player_id] = []
+
         # Main tracking loop
         for current_frame_idx in range(start_frame, end_frame + 1):
             ret, frame = cap.read()
@@ -513,25 +531,65 @@ class TrackerManager:
 
             # Track each player
             for player_id, player in self.players.items():
-                is_learning_frame = current_frame_idx in player.learning_frames
+                learning_frames_sorted = player_learning_frames_sorted.get(player_id, [])
+                has_learning_frames = bool(learning_frames_sorted)
+                is_learning_frame = has_learning_frames and current_frame_idx in player.learning_frames
+
+                failure_reason = None
 
                 # Initialize or reinitialize tracker at learning frames
                 if current_frame_idx == start_frame or is_learning_frame:
+                    init_bbox = None
+
                     # Use learning frame bbox if available, otherwise use player's initial bbox
                     if is_learning_frame:
                         init_bbox = player.learning_frames[current_frame_idx]
                         print(f"🔄 Frame {current_frame_idx}: Reinitializing player {player_id} with learning frame bbox={init_bbox}")
                     elif current_frame_idx == start_frame:
-                        # Find closest learning frame to start_frame
-                        learning_frames_sorted = sorted(player.learning_frames.keys())
-                        closest_frame = min(learning_frames_sorted, key=lambda f: abs(f - start_frame))
-                        init_bbox = player.learning_frames[closest_frame]
-                        print(f"🔄 Frame {current_frame_idx}: Initializing player {player_id} with closest learning frame (frame {closest_frame}) bbox={init_bbox}")
+                        if has_learning_frames:
+                            # Prefer the last learning frame at or BEFORE start_frame.
+                            # This avoids initializing with a bbox from a FUTURE frame,
+                            # which can be very inaccurate for earlier frames.
+                            past_or_equal = [f for f in learning_frames_sorted if f <= start_frame]
+                            if past_or_equal:
+                                closest_frame = max(past_or_equal)
+                                init_bbox = player.learning_frames[closest_frame]
+                                print(
+                                    f"🔄 Frame {current_frame_idx}: Initializing player {player_id} "
+                                    f"with latest learning frame <= start (frame {closest_frame}) "
+                                    f"bbox={init_bbox}"
+                                )
+                            else:
+                                # No learning frames before start_frame – safest is to wait until
+                                # we actually reach the first learning frame instead of using
+                                # a bbox from the future.
+                                first_future = learning_frames_sorted[0]
+                                print(
+                                    f"⏸ Frame {current_frame_idx}: No learning frame before start for "
+                                    f"player {player_id} (first at frame {first_future}); "
+                                    f"skipping initialization until then."
+                                )
+                                init_bbox = None
+                        else:
+                            # Extremely defensive fallback: no learning_frames at all.
+                            # Use player's initial bbox if available, but warn loudly.
+                            init_bbox = getattr(player, "bbox", None)
+                            print(
+                                f"⚠️  Frame {current_frame_idx}: Player {player_id} has NO learning_frames; "
+                                f"falling back to player.bbox={init_bbox}"
+                            )
 
-                    player.tracker.init(frame, init_bbox)
-                    bbox = init_bbox
-                    success = True
-                    confidence = 1.0  # Learning frames have perfect confidence
+                    if init_bbox is not None:
+                        player.tracker.init_tracker(frame, init_bbox)
+                        bbox = init_bbox
+                        success = True
+                        # Learning / initialization frames get full confidence
+                        confidence = 1.0
+                    else:
+                        # We deliberately chose not to initialize yet (e.g. before first learning frame)
+                        bbox = None
+                        success = False
+                        confidence = 0.0
                 else:
                     # Normal tracking update
                     bbox = player.tracker.update(frame)
@@ -540,6 +598,33 @@ class TrackerManager:
                     # Calculate confidence based on tracker success
                     # TODO: Improve confidence calculation (can use IoU with previous frame, tracker score, etc.)
                     confidence = 0.8 if success else 0.0
+
+                    # External failure checks using previous bbox
+                    prev_bbox = previous_bboxes.get(player_id)
+                    if success and bbox is not None and prev_bbox is not None:
+                        x, y, w, h = bbox
+                        px, py, pw, ph = prev_bbox
+
+                        # Guard against zero area
+                        if pw > 0 and ph > 0:
+                            size_change = abs((w * h) - (pw * ph)) / (pw * ph)
+                        else:
+                            size_change = 0.0
+
+                        if size_change > self.MAX_SIZE_CHANGE_FACTOR:
+                            failure_reason = 'SIZE_CHANGE'
+                            success = False
+                            confidence = 0.0
+                        else:
+                            # Center shift relative to box size
+                            center_shift = ((x + w / 2) - (px + pw / 2)) ** 2 + ((y + h / 2) - (py + ph / 2)) ** 2
+                            avg_dimension = max((pw + ph) / 2, 1e-3)
+                            relative_shift = (center_shift ** 0.5) / avg_dimension
+
+                            if relative_shift > self.MAX_CENTER_SHIFT_FACTOR:
+                                failure_reason = 'POSITION_SHIFT'
+                                success = False
+                                confidence = 0.0
 
                 # Store tracking data
                 if success and bbox is not None:
@@ -553,12 +638,16 @@ class TrackerManager:
                     if player_id not in self.tracking_results:
                         self.tracking_results[player_id] = {}
                     self.tracking_results[player_id][current_frame_idx] = bbox
+
+                    # Remember last successful bbox for next frame checks
+                    previous_bboxes[player_id] = bbox
                 else:
                     # Track was lost - store None to indicate gap
                     tracking_data[player_id][current_frame_idx] = {
                         'bbox': None,
                         'confidence': 0.0,
-                        'is_learning_frame': is_learning_frame
+                        'is_learning_frame': is_learning_frame,
+                        'failure_reason': failure_reason if failure_reason else 'TRACKER_LOST'
                     }
 
                     if player_id not in self.tracking_results:

@@ -290,6 +290,334 @@ class ModernStyles:
         cv2.addWeighted(inner_overlay, 0.5, frame, 0.5, 0, frame)
         
         return frame
+
+    @staticmethod
+    def draw_nba_iso_ring(frame: np.ndarray, bbox: Tuple[int, int, int, int],
+                          color: Tuple[int, int, int] = (0, 215, 255),
+                          frame_count: int = 0, player=None) -> np.ndarray:
+        """
+        NBA Iso Ring - flat, glowing ellipse on the floor with subtle pulse animation
+
+        Args:
+            frame: Frame to draw on (BGR)
+            bbox: Bounding box (padded)
+            color: Base ring color
+            frame_count: Current frame number for animation
+            player: Player object (optional, for accessing original_bbox)
+
+        Returns:
+            Frame with iso ring drawn
+        """
+        x, y, w, h = bbox
+        center_x = x + w // 2
+
+        # Base radii sized to player width; pulse adds presence without overpowering
+        base_radius_x = max(int(w * 0.8), 55)
+        base_radius_y = max(int(w * 0.18), 12)
+        pulse = 0.5 * (1 + math.sin(frame_count * 0.2))
+        radius_x = int(base_radius_x * (0.9 + 0.15 * pulse))
+        radius_y = int(base_radius_y * (0.9 + 0.15 * pulse))
+        thickness = max(2, int(3 + pulse * 3))
+
+        # Place the ellipse at the feet using original bbox when available
+        if hasattr(player, 'current_original_bbox') and player and player.current_original_bbox:
+            orig_x, orig_y, orig_w, orig_h = player.current_original_bbox
+            feet_level = orig_y + orig_h
+        else:
+            feet_level = y + h
+        center_y = feet_level - max(2, int(radius_y * 0.35))
+
+        # Glow layers for soft presence on the floor
+        for i in range(3):
+            overlay = frame.copy()
+            glow_radius_x = radius_x + i * 6
+            glow_radius_y = radius_y + i * 3
+            glow_alpha = max(0.05, (0.18 - i * 0.04) + pulse * 0.08)
+            cv2.ellipse(
+                overlay,
+                (center_x, center_y),
+                (glow_radius_x, glow_radius_y),
+                0, 0, 360,
+                color,
+                2,
+                cv2.LINE_AA
+            )
+            cv2.addWeighted(overlay, glow_alpha, frame, 1.0 - glow_alpha, 0, frame)
+
+        # Main ring with pulse-adjusted thickness
+        overlay = frame.copy()
+        cv2.ellipse(
+            overlay,
+            (center_x, center_y),
+            (radius_x, radius_y),
+            0, 0, 360,
+            color,
+            thickness,
+            cv2.LINE_AA
+        )
+        main_alpha = 0.65 + 0.1 * pulse
+        cv2.addWeighted(overlay, main_alpha, frame, 1.0 - main_alpha, 0, frame)
+
+        # Inner highlight for extra clarity
+        highlight_color = tuple(min(c + 40, 255) for c in color)
+        overlay = frame.copy()
+        cv2.ellipse(
+            overlay,
+            (center_x, center_y),
+            (int(radius_x * 0.85), int(radius_y * 0.7)),
+            0, 0, 360,
+            highlight_color,
+            1,
+            cv2.LINE_AA
+        )
+        highlight_alpha = 0.35 + 0.1 * pulse
+        cv2.addWeighted(overlay, highlight_alpha, frame, 1.0 - highlight_alpha, 0, frame)
+
+        return frame
+
+    @staticmethod
+    def draw_floating_ar_tag(frame: np.ndarray, bbox: Tuple[int, int, int, int],
+                             color: Tuple[int, int, int] = (0, 215, 255),
+                             frame_count: int = 0, player=None) -> np.ndarray:
+        """
+        Floating AR tag above head with connector line and glow base (success/fail styling)
+
+        Args:
+            frame: Frame to draw on
+            bbox: Bounding box (padded)
+            color: Accent color
+            frame_count: Frame number for subtle bobbing
+            player: Player object (optional)
+
+        Returns:
+            Frame with AR tag
+        """
+        x, y, w, h = bbox
+        center_x = x + w // 2
+
+        # Position above head using original bbox if available
+        if hasattr(player, 'current_original_bbox') and player and player.current_original_bbox:
+            orig_x, orig_y, orig_w, _ = player.current_original_bbox
+            head_y = orig_y
+            feet_y = orig_y + player.current_original_bbox[3]
+        else:
+            head_y = y
+            feet_y = y + h
+
+        bob = int(5 * np.sin(frame_count * 0.12))
+        card_width = max(180, int(w * 0.85))
+        card_height = 80
+        card_bottom = max(0, head_y - int(h * 0.15) + bob)
+        card_top = max(0, card_bottom - card_height)
+        card_left = center_x - card_width // 2
+        card_right = center_x + card_width // 2
+
+        # Status/color logic
+        success_color = (113, 204, 46)  # BGR for #2ecc71
+        fail_color = (60, 76, 231)      # BGR for #e74c3c
+        is_fail = bool(getattr(player, "tracking_lost", False))
+        status_color = fail_color if is_fail else success_color
+        status_icon = "✗" if is_fail else "✓"
+        action_text = "Tracking Lost" if is_fail else "Tracking Active"
+        comment_text = "Reacquire target" if is_fail else "Locked on player"
+        name_text = player.name if player and getattr(player, "name", None) else "Player"
+
+        # Drop shadow
+        shadow_overlay = frame.copy()
+        cv2.rectangle(shadow_overlay, (card_left + 3, card_top + 6), (card_right + 3, card_bottom + 6), (0, 0, 0), -1, cv2.LINE_AA)
+        cv2.addWeighted(shadow_overlay, 0.35, frame, 0.65, 0, frame)
+
+        # Card body
+        card_overlay = frame.copy()
+        body_color = (30, 30, 40)
+        border_color = (60, 60, 70)
+        cv2.rectangle(card_overlay, (card_left, card_top), (card_right, card_bottom), body_color, -1, cv2.LINE_AA)
+        cv2.rectangle(card_overlay, (card_left, card_top), (card_right, card_bottom), border_color, 1, cv2.LINE_AA)
+        cv2.rectangle(card_overlay, (card_left, card_top), (card_left + 5, card_bottom), color, -1, cv2.LINE_AA)
+
+        # Text rows
+        baseline = card_top + 20
+        cv2.putText(card_overlay, name_text, (card_left + 12, baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (240, 240, 240), 2, cv2.LINE_AA)
+
+        # Action row and status icon
+        cv2.putText(card_overlay, action_text, (card_left + 12, baseline + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA)
+        cv2.putText(card_overlay, status_icon, (card_right - 18, baseline + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2, cv2.LINE_AA)
+
+        # Comment row
+        cv2.putText(card_overlay, comment_text, (card_left + 12, baseline + 42), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 190), 1, cv2.LINE_AA)
+
+        cv2.addWeighted(card_overlay, 0.9, frame, 0.1, 0, frame)
+
+        # Connector to floor
+        connector_overlay = frame.copy()
+        cv2.line(connector_overlay, (center_x, card_bottom), (center_x, feet_y), color, 2, cv2.LINE_AA)
+        cv2.addWeighted(connector_overlay, 0.7, frame, 0.3, 0, frame)
+
+        # Base ellipse on floor with glow
+        base_overlay = frame.copy()
+        base_rx = max(12, int(w * 0.12))
+        base_ry = max(5, int(w * 0.04))
+        cv2.ellipse(base_overlay, (center_x, feet_y), (base_rx, base_ry), 0, 0, 360, color, -1, cv2.LINE_AA)
+        cv2.ellipse(base_overlay, (center_x, feet_y), (base_rx + 4, base_ry + 2), 0, 0, 360, color, 1, cv2.LINE_AA)
+        cv2.addWeighted(base_overlay, 0.6, frame, 0.4, 0, frame)
+
+        return frame
+
+    @staticmethod
+    def draw_tactical_brackets(frame: np.ndarray, bbox: Tuple[int, int, int, int],
+                               color: Tuple[int, int, int] = (0, 215, 255),
+                               frame_count: int = 0, player=None) -> np.ndarray:
+        """
+        Analytic-style tactical brackets that gently breathe
+
+        Args:
+            frame: Frame to draw on
+            bbox: Bounding box (padded)
+            color: Bracket color
+            frame_count: Frame number for breathing animation
+            player: Player object (unused)
+
+        Returns:
+            Frame with tactical brackets
+        """
+        x, y, w, h = bbox
+        center_x = x + w // 2
+        center_y = y + h // 2
+
+        scale = 1.0 + 0.05 * np.sin(frame_count * 0.08)
+        box_w = int(max(w * 0.9, 80) * scale)
+        box_h = int(max(h * 0.85, 100) * scale)
+        left = center_x - box_w // 2
+        right = center_x + box_w // 2
+        top = center_y - box_h // 2
+        bottom = center_y + box_h // 2
+
+        corner_len = int(min(box_w, box_h) * 0.18)
+        thickness = 3
+
+        def draw_corners(img, col, thick):
+            corners = [
+                ((left, top), (left + corner_len, top), (left, top + corner_len)),            # TL
+                ((right, top), (right - corner_len, top), (right, top + corner_len)),        # TR
+                ((left, bottom), (left + corner_len, bottom), (left, bottom - corner_len)),  # BL
+                ((right, bottom), (right - corner_len, bottom), (right, bottom - corner_len))# BR
+            ]
+            for (p, h_end, v_end) in corners:
+                cv2.line(img, p, h_end, col, thick, cv2.LINE_AA)
+                cv2.line(img, p, v_end, col, thick, cv2.LINE_AA)
+
+        # Glow layer
+        glow_overlay = frame.copy()
+        draw_corners(glow_overlay, color, thickness + 2)
+        cv2.addWeighted(glow_overlay, 0.18, frame, 0.82, 0, frame)
+
+        # Main brackets
+        main_overlay = frame.copy()
+        draw_corners(main_overlay, color, thickness)
+        cv2.addWeighted(main_overlay, 0.85, frame, 0.15, 0, frame)
+
+        return frame
+
+    @staticmethod
+    def draw_sonar_ripple(frame: np.ndarray, bbox: Tuple[int, int, int, int],
+                          color: Tuple[int, int, int] = (0, 215, 255),
+                          frame_count: int = 0, player=None) -> np.ndarray:
+        """
+        Sonar-like ripples on the floor with perspective flattening
+
+        Args:
+            frame: Frame to draw on
+            bbox: Bounding box (padded)
+            color: Wave color
+            frame_count: Frame number for ripple timing
+            player: Player object (optional)
+
+        Returns:
+            Frame with sonar ripples
+        """
+        x, y, w, h = bbox
+        center_x = x + w // 2
+
+        if hasattr(player, 'current_original_bbox') and player and player.current_original_bbox:
+            orig_x, orig_y, orig_w, orig_h = player.current_original_bbox
+            feet_y = orig_y + orig_h
+        else:
+            feet_y = y + h
+
+        base_radius_x = max(int(w * 0.75), 60)
+        base_radius_y = max(int(w * 0.18), 12)
+
+        # Emitter base
+        emitter_overlay = frame.copy()
+        cv2.ellipse(emitter_overlay, (center_x, feet_y), (int(base_radius_x * 0.35), int(base_radius_y * 0.3)), 0, 0, 360, color, -1, cv2.LINE_AA)
+        cv2.addWeighted(emitter_overlay, 0.5, frame, 0.5, 0, frame)
+
+        # Multiple ripples with phase offset
+        for i in range(3):
+            phase = frame_count * 0.08 + i * 0.65
+            progress = (phase % (2 * math.pi)) / (2 * math.pi)  # 0-1
+            scale = 0.6 + progress * 1.3
+            alpha = max(0.0, 0.55 * (1 - progress))
+            thickness = max(1, int(3 - progress * 2))
+
+            overlay = frame.copy()
+            cv2.ellipse(
+                overlay,
+                (center_x, feet_y),
+                (int(base_radius_x * scale), int(base_radius_y * scale * 0.9)),
+                0, 0, 360,
+                color,
+                thickness,
+                cv2.LINE_AA
+            )
+            cv2.addWeighted(overlay, alpha, frame, 1.0 - alpha, 0, frame)
+
+        return frame
+
+    @staticmethod
+    def draw_floating_chevron(frame: np.ndarray, bbox: Tuple[int, int, int, int],
+                              color: Tuple[int, int, int] = (0, 215, 255),
+                              frame_count: int = 0, player=None) -> np.ndarray:
+        """
+        Floating chevron above the player's head with smooth bobbing and drop shadow
+
+        Args:
+            frame: Frame to draw on (BGR)
+            bbox: Bounding box (padded)
+            color: Chevron color
+            frame_count: Current frame number for bobbing animation
+            player: Player object (unused)
+
+        Returns:
+            Frame with floating chevron
+        """
+        x, y, w, _ = bbox
+        center_x = x + w // 2
+        head_y = y
+
+        # Bobbing animation (soft sine wave)
+        bob_offset = int(8 * np.sin(frame_count * 0.15))
+        chevron_y = max(0, head_y - 60 + bob_offset)
+
+        # Chevron size relative to player width
+        half_width = max(20, int(w * 0.25))
+        height = max(18, int(w * 0.18))
+
+        # Define triangle points (pointing down)
+        triangle = np.array([
+            [center_x - half_width, chevron_y],
+            [center_x + half_width, chevron_y],
+            [center_x, chevron_y + height]
+        ], np.int32)
+
+        # Drop shadow (offset)
+        shadow = triangle + np.array([2, 2])
+        cv2.fillPoly(frame, [shadow], (0, 0, 0), lineType=cv2.LINE_AA)
+
+        # Main chevron
+        cv2.fillPoly(frame, [triangle], color, lineType=cv2.LINE_AA)
+
+        return frame
     
     @staticmethod
     def draw_spotlight(frame: np.ndarray, bbox: Tuple[int, int, int, int],
@@ -409,6 +737,50 @@ class ModernStyles:
         cv2.ellipse(overlay, (center_x, feet_y), (floor_radius_x, floor_radius_y),
                    0, 0, 360, (255, 255, 255), -1, cv2.LINE_AA)
         cv2.addWeighted(overlay, 0.4, result, 0.6, 0, result)
+
+        # Add richer beam core and rim glows for a premium look
+        core_color = tuple(min(c + 50, 255) for c in color)
+        top_y = max(0, int(center_y - h * 1.6))
+
+        # Core trapezoid inside the cone
+        core_overlay = result.copy()
+        core_points = np.array([
+            [center_x - int(top_width * 0.45), top_y],
+            [center_x + int(top_width * 0.45), top_y],
+            [center_x + int(bottom_width * 0.55), center_y],
+            [center_x - int(bottom_width * 0.55), center_y]
+        ], np.int32)
+        cv2.fillPoly(core_overlay, [core_points], core_color, lineType=cv2.LINE_AA)
+        cv2.addWeighted(core_overlay, 0.2, result, 0.8, 0, result)
+
+        # Rim glow lines along cone edges
+        rim_overlay = result.copy()
+        left_edge = np.array([
+            [center_x - top_width // 2, top_y],
+            [center_x - bottom_width // 2, center_y]
+        ], np.int32)
+        right_edge = np.array([
+            [center_x + top_width // 2, top_y],
+            [center_x + bottom_width // 2, center_y]
+        ], np.int32)
+        cv2.polylines(rim_overlay, [left_edge, right_edge], False, core_color, 2, cv2.LINE_AA)
+        cv2.addWeighted(rim_overlay, 0.35, result, 0.65, 0, result)
+
+        # Subtle vertical rays inside the beam
+        rays_overlay = result.copy()
+        for offset in (-1, 0, 1):
+            offset_top = center_x + offset * max(2, top_width // 6)
+            offset_bottom = center_x + offset * max(3, bottom_width // 6)
+            cv2.line(rays_overlay, (offset_top, top_y), (offset_bottom, center_y), core_color, 1, cv2.LINE_AA)
+        cv2.addWeighted(rays_overlay, 0.18, result, 0.82, 0, result)
+
+        # Hot center on the floor impact point
+        inner_overlay = result.copy()
+        inner_radius_x = max(6, int(floor_radius_x * 0.45))
+        inner_radius_y = max(3, int(floor_radius_y * 0.6))
+        cv2.ellipse(inner_overlay, (center_x, feet_y), (inner_radius_x, inner_radius_y),
+                   0, 0, 360, core_color, -1, cv2.LINE_AA)
+        cv2.addWeighted(inner_overlay, 0.55, result, 0.45, 0, result)
 
         return result
 
@@ -671,6 +1043,50 @@ class ModernStyles:
                    0, 0, 360, (255, 255, 255), -1, cv2.LINE_AA)
         cv2.addWeighted(overlay, 0.4, result, 0.6, 0, result)
 
+        # Add richer beam core and rim glows for a premium look
+        core_color = tuple(min(c + 50, 255) for c in color)
+        top_y = max(0, int(center_y - h * 1.6))
+
+        # Core trapezoid inside the cone
+        core_overlay = result.copy()
+        core_points = np.array([
+            [center_x - int(top_width * 0.45), top_y],
+            [center_x + int(top_width * 0.45), top_y],
+            [center_x + int(bottom_width * 0.55), center_y],
+            [center_x - int(bottom_width * 0.55), center_y]
+        ], np.int32)
+        cv2.fillPoly(core_overlay, [core_points], core_color, lineType=cv2.LINE_AA)
+        cv2.addWeighted(core_overlay, 0.2, result, 0.8, 0, result)
+
+        # Rim glow lines along cone edges
+        rim_overlay = result.copy()
+        left_edge = np.array([
+            [center_x - top_width // 2, top_y],
+            [center_x - bottom_width // 2, center_y]
+        ], np.int32)
+        right_edge = np.array([
+            [center_x + top_width // 2, top_y],
+            [center_x + bottom_width // 2, center_y]
+        ], np.int32)
+        cv2.polylines(rim_overlay, [left_edge, right_edge], False, core_color, 2, cv2.LINE_AA)
+        cv2.addWeighted(rim_overlay, 0.35, result, 0.65, 0, result)
+
+        # Subtle vertical rays inside the beam
+        rays_overlay = result.copy()
+        for offset in (-1, 0, 1):
+            offset_top = center_x + offset * max(2, top_width // 6)
+            offset_bottom = center_x + offset * max(3, bottom_width // 6)
+            cv2.line(rays_overlay, (offset_top, top_y), (offset_bottom, center_y), core_color, 1, cv2.LINE_AA)
+        cv2.addWeighted(rays_overlay, 0.18, result, 0.82, 0, result)
+
+        # Hot center on the floor impact point
+        inner_overlay = result.copy()
+        inner_radius_x = max(6, int(floor_radius_x * 0.45))
+        inner_radius_y = max(3, int(floor_radius_y * 0.6))
+        cv2.ellipse(inner_overlay, (center_x, feet_y), (inner_radius_x, inner_radius_y),
+                   0, 0, 360, core_color, -1, cv2.LINE_AA)
+        cv2.addWeighted(inner_overlay, 0.55, result, 0.45, 0, result)
+
         return result
 
     @staticmethod
@@ -813,14 +1229,14 @@ class ModernStyles:
     
     @staticmethod
     def draw_crosshair(frame: np.ndarray, bbox: Tuple[int, int, int, int],
-                       color: Tuple[int, int, int] = (0, 255, 0)) -> np.ndarray:
+                       color: Tuple[int, int, int] = (255, 255, 0)) -> np.ndarray:
         """
-        Crosshair targeting system - tactical look
+        Tactical Scope crosshair with center gap and end ticks
         
         Args:
             frame: Frame to draw on
             bbox: Bounding box
-            color: Crosshair color
+            color: Crosshair color (default neon cyan)
             
         Returns:
             Frame with crosshair
@@ -829,52 +1245,25 @@ class ModernStyles:
         center_x = x + w // 2
         center_y = y + h // 2
         
-        # Circle radius
-        radius = max(int(max(w, h) * 0.6), 40)
-        
-        # Draw circle
-        cv2.circle(frame, (center_x, center_y), radius, color, 2, cv2.LINE_AA)
-        cv2.circle(frame, (center_x, center_y), radius - 5, color, 1, cv2.LINE_AA)
-        
-        # Draw crosshair lines
-        line_len = 15
-        gap = 8
-        
-        # Top
-        cv2.line(frame, (center_x, center_y - radius - gap), 
-                (center_x, center_y - radius - gap - line_len), color, 2, cv2.LINE_AA)
-        # Bottom
-        cv2.line(frame, (center_x, center_y + radius + gap), 
-                (center_x, center_y + radius + gap + line_len), color, 2, cv2.LINE_AA)
-        # Left
-        cv2.line(frame, (center_x - radius - gap, center_y), 
-                (center_x - radius - gap - line_len, center_y), color, 2, cv2.LINE_AA)
-        # Right
-        cv2.line(frame, (center_x + radius + gap, center_y), 
-                (center_x + radius + gap + line_len, center_y), color, 2, cv2.LINE_AA)
-        
-        # Draw corner brackets
-        bracket_size = 10
-        corners = [
-            (center_x - radius, center_y - radius),  # Top-left
-            (center_x + radius, center_y - radius),  # Top-right
-            (center_x - radius, center_y + radius),  # Bottom-left
-            (center_x + radius, center_y + radius)   # Bottom-right
-        ]
-        
-        for i, (cx, cy) in enumerate(corners):
-            # Determine bracket direction
-            h_dir = 1 if i % 2 == 1 else -1
-            v_dir = 1 if i >= 2 else -1
-            
-            # Horizontal line
-            cv2.line(frame, (cx, cy), (cx + h_dir * bracket_size, cy), color, 2, cv2.LINE_AA)
-            # Vertical line
-            cv2.line(frame, (cx, cy), (cx, cy + v_dir * bracket_size), color, 2, cv2.LINE_AA)
-        
-        # Center dot
-        cv2.circle(frame, (center_x, center_y), 3, color, -1, cv2.LINE_AA)
-        
+        radius = max(int(max(w, h) * 0.5), 30)
+        gap = max(10, int(radius * 0.2))  # Leave center clear
+        tick = max(6, int(radius * 0.12))
+        thickness = 2
+
+        # Horizontal lines with center gap
+        cv2.line(frame, (center_x - radius, center_y), (center_x - gap, center_y), color, thickness, cv2.LINE_AA)
+        cv2.line(frame, (center_x + gap, center_y), (center_x + radius, center_y), color, thickness, cv2.LINE_AA)
+
+        # Vertical lines with center gap
+        cv2.line(frame, (center_x, center_y - radius), (center_x, center_y - gap), color, thickness, cv2.LINE_AA)
+        cv2.line(frame, (center_x, center_y + gap), (center_x, center_y + radius), color, thickness, cv2.LINE_AA)
+
+        # Ticks at outer ends for a professional scope look
+        cv2.line(frame, (center_x - radius, center_y - tick), (center_x - radius, center_y + tick), color, thickness, cv2.LINE_AA)
+        cv2.line(frame, (center_x + radius, center_y - tick), (center_x + radius, center_y + tick), color, thickness, cv2.LINE_AA)
+        cv2.line(frame, (center_x - tick, center_y - radius), (center_x + tick, center_y - radius), color, thickness, cv2.LINE_AA)
+        cv2.line(frame, (center_x - tick, center_y + radius), (center_x + tick, center_y + radius), color, thickness, cv2.LINE_AA)
+
         return frame
     
     @staticmethod
@@ -970,4 +1359,3 @@ class ModernStyles:
         cv2.circle(frame, (center_x, star_y), center_highlight_size, gold_white, -1, cv2.LINE_AA)
         
         return frame
-

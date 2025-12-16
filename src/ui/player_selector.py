@@ -34,17 +34,12 @@ class PlayerSelector(QDialog):
         style_layout = QVBoxLayout()
         self.style_combo = QComboBox()
         self.style_combo.addItems([
-            "🔺 Arrow above head",
-            "⭕ 3D Floor Hoop (yellow)",
-            "🔷 Blue Rectangle with corners",
-            "💡 Light Column (alien beam)",
-            "💠 Neon Ring (white glowing)",
-            "💫 Pulse Circle (orange animated)",
-            "🌈 Gradient Ring (purple with rotating glow)",
-            "🎯 Dynamic Arrow (bouncing, sharp)",
-            "⬡ Hexagon (futuristic)",
-            "🎮 Crosshair (tactical targeting)",
-            "🔥 Burning Flame (above head)"
+            "🏀 NBA Iso Ring (broadcast floor glow)",
+            "〽️ Floating Chevron (FIFA-style)",
+            "💡 Spotlight (alien beam)",
+            "🎯 Tactical Crosshair",
+            "🔲 Tactical Brackets",
+            "🌊 Sonar Ripple"
         ])
         
         # Add description label that updates based on selection
@@ -76,17 +71,12 @@ class PlayerSelector(QDialog):
     def _update_description(self):
         """Update style description based on selection"""
         descriptions = {
-            0: "Beautiful yellow arrow pointing down at player from above",
-            1: "3D elliptical yellow hoop on floor - professional sports broadcast style",
-            2: "Clean blue rectangle with corner highlights - modern & professional",
-            3: "Light column from ceiling (like alien spaceship beam) - dramatic effect",
-            4: "Modern white neon ring with glowing effect - eye-catching and stylish",
-            5: "Orange pulsing circle that breathes - smooth animated effect",
-            6: "Purple gradient ring with rotating glow - thick and prominent",
-            7: "Sharp bouncing dynamic arrow - elegant and animated",
-            8: "Futuristic hexagon outline - sci-fi tactical look",
-            9: "Tactical crosshair targeting system - game-style precision",
-            10: "Burning flame above player's head - perfect for hot players!"
+            0: "טבעת זוהרת בסגנון 2K",
+            1: "חץ תלת-ממדי מרחף",
+            2: "Light column / alien beam - custom spotlight",
+            3: "Tactical scope crosshair with clear center",
+            4: "סוגריים טקטיים נושמים בסגנון אנליטי",
+            5: "גלי סונאר שטוחים על הרצפה"
         }
         desc = descriptions.get(self.style_combo.currentIndex(), "")
         self.style_description.setText(desc)
@@ -98,19 +88,14 @@ class PlayerSelector(QDialog):
             name = f"Player {id(self)}"  # Default name
         
         style_map = {
-            0: "arrow",
-            1: "circle",
-            2: "rectangle",
-            3: "spotlight_modern",
-            4: "neon_ring",
-            5: "pulse",
-            6: "gradient",
-            7: "dynamic_arrow",
-            8: "hexagon",
-            9: "crosshair",
-            10: "flame"
+            0: "nba_iso_ring",
+            1: "floating_chevron",
+            2: "spotlight_modern",
+            3: "crosshair",
+            4: "tactical_brackets",
+            5: "sonar_ripple"
         }
-        style = style_map.get(self.style_combo.currentIndex(), "rectangle")
+        style = style_map.get(self.style_combo.currentIndex(), "nba_iso_ring")
         
         self.player_confirmed.emit(name, style)
         self.accept()
@@ -118,12 +103,11 @@ class PlayerSelector(QDialog):
     def get_selected_style(self) -> str:
         """Get selected marker style"""
         style_map = {
-            0: "arrow",
-            1: "circle",
-            2: "rectangle",
-            3: "spotlight",
-            4: "outline"
+            0: "nba_iso_ring",
+            1: "floating_chevron",
+            2: "spotlight_modern",
+            3: "crosshair",
+            4: "tactical_brackets",
+            5: "sonar_ripple"
         }
-        return style_map.get(self.style_combo.currentIndex(), "rectangle")
-
-
+        return style_map.get(self.style_combo.currentIndex(), "nba_iso_ring")

@@ -24,8 +24,9 @@ def setup_ffmpeg_path():
             if ffmpeg_dir not in os.environ.get("PATH", ""):
                 os.environ["PATH"] = f"{ffmpeg_dir}:{os.environ.get('PATH', '')}"
             print(f"✅ FFmpeg found: {ffmpeg_exe}")
-    except ImportError:
-        pass
+    except Exception as e:
+        # Broad catch to ensure app startup never crashes due to FFmpeg detection issues
+        print(f"⚠️  Failed to configure FFmpeg via imageio_ffmpeg: {e}")
 
 
 def main():

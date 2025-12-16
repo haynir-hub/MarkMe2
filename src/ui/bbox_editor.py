@@ -8,7 +8,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QRect, QPoint
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QBrush, QMouseEvent
 import cv2
 import numpy as np
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 
 class BboxEditor(QLabel):
@@ -49,9 +49,13 @@ class BboxEditor(QLabel):
         self.current_frame = None
         self.frame_rgb = None
         self.scale_factor = 1.0
+        self.display_offset = QPoint(0, 0)
+        self.scaled_size = (0, 0)
 
         # Bbox in frame coordinates (x, y, w, h)
         self.bbox = None
+        self.candidate_bboxes: List[Tuple[int, int, int, int, float]] = []
+        self.hover_candidate_index: Optional[int] = None
 
         # Drawing state
         self.is_drawing = False
@@ -120,6 +124,11 @@ class BboxEditor(QLabel):
         )
 
         scaled_size = (int(w * self.scale_factor), int(h * self.scale_factor))
+        self.scaled_size = scaled_size
+        self.display_offset = QPoint(
+            max(0, (widget_size.width() - scaled_size[0]) // 2),
+            max(0, (widget_size.height() - scaled_size[1]) // 2)
+        )
         scaled_pixmap = pixmap.scaled(
             scaled_size[0], scaled_size[1],
             Qt.AspectRatioMode.KeepAspectRatio,
@@ -127,7 +136,7 @@ class BboxEditor(QLabel):
         )
 
         # Draw bbox and handles on top
-        if self.bbox or self.is_drawing:
+        if self.bbox or self.is_drawing or self.candidate_bboxes:
             painter = QPainter(scaled_pixmap)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -141,6 +150,10 @@ class BboxEditor(QLabel):
                     self.draw_start, self.draw_current
                 )
                 self._draw_bbox(painter, temp_bbox, False, dashed=True)
+
+            # Draw auto-detected candidate bboxes
+            if self.candidate_bboxes:
+                self._draw_candidate_bboxes(painter)
 
             painter.end()
 
@@ -197,13 +210,64 @@ class BboxEditor(QLabel):
         for hx, hy in handles:
             painter.drawRect(hx, hy, hs, hs)
 
+    def _draw_candidate_bboxes(self, painter: QPainter):
+        """Draw auto-detected candidate bboxes with confidence labels"""
+        for idx, candidate in enumerate(self.candidate_bboxes):
+            # Support tuples with or without confidence
+            if len(candidate) >= 5:
+                x, y, w, h, conf = candidate
+            else:
+                x, y, w, h = candidate
+                conf = None
+
+            sx = int(x * self.scale_factor)
+            sy = int(y * self.scale_factor)
+            sw = int(w * self.scale_factor)
+            sh = int(h * self.scale_factor)
+
+            color = QColor(255, 140, 0) if idx != self.hover_candidate_index else QColor(255, 200, 0)
+            pen = QPen(color, 2 if idx != self.hover_candidate_index else 3)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(sx, sy, sw, sh)
+
+            # Draw label above the bbox
+            label = f"Auto #{idx + 1}"
+            if conf is not None:
+                label += f" ({conf:.0%})"
+
+            fm = painter.fontMetrics()
+            text_rect = fm.boundingRect(label)
+            text_x = sx + max(0, (sw - text_rect.width()) // 2)
+            text_y = sy - 8
+            if text_y - text_rect.height() < 0:
+                text_y = sy + sh + text_rect.height() + 6
+
+            bg_rect = QRect(
+                text_x - 4,
+                text_y - text_rect.height(),
+                text_rect.width() + 8,
+                text_rect.height() + 4
+            )
+            painter.fillRect(bg_rect, QColor(0, 0, 0, 160))
+            painter.drawText(text_x, text_y - 2, label)
+
     def _widget_to_frame_coords(self, point: QPoint) -> Tuple[int, int]:
         """Convert widget coordinates to frame coordinates"""
-        if self.scale_factor == 0:
+        if self.scale_factor == 0 or self.frame_rgb is None:
             return (0, 0)
 
-        x = int(point.x() / self.scale_factor)
-        y = int(point.y() / self.scale_factor)
+        # Translate mouse position into pixmap space (account for centering offset)
+        px = point.x() - self.display_offset.x()
+        py = point.y() - self.display_offset.y()
+
+        if self.scaled_size[0] > 0 and self.scaled_size[1] > 0:
+            px = max(0, min(px, self.scaled_size[0] - 1))
+            py = max(0, min(py, self.scaled_size[1] - 1))
+
+        x = int(px / self.scale_factor)
+        y = int(py / self.scale_factor)
 
         # Clamp to frame bounds
         if self.current_frame is not None:
@@ -233,8 +297,8 @@ class BboxEditor(QLabel):
         x, y, w, h = self.bbox
 
         # Scale to widget coordinates
-        sx = int(x * self.scale_factor)
-        sy = int(y * self.scale_factor)
+        sx = int(x * self.scale_factor) + self.display_offset.x()
+        sy = int(y * self.scale_factor) + self.display_offset.y()
         sw = int(w * self.scale_factor)
         sh = int(h * self.scale_factor)
 
@@ -294,6 +358,18 @@ class BboxEditor(QLabel):
         pos = event.pos()
 
         # Check if clicking on existing bbox
+        candidate_idx = self._get_candidate_index(pos)
+        if candidate_idx is not None:
+            chosen = self.candidate_bboxes[candidate_idx]
+            self.hover_candidate_index = candidate_idx
+            self.bbox = (chosen[0], chosen[1], chosen[2], chosen[3])
+            self.is_drawing = False
+            self.is_editing = False
+            self.resize_mode = self.RESIZE_NONE
+            self.bbox_changed.emit(self.bbox)
+            self._update_display()
+            return
+
         resize_mode = self._get_resize_mode(pos)
 
         if resize_mode != self.RESIZE_NONE:
@@ -327,8 +403,18 @@ class BboxEditor(QLabel):
 
         else:
             # Update cursor based on hover position
-            resize_mode = self._get_resize_mode(pos)
-            self._update_cursor(resize_mode)
+            candidate_idx = self._get_candidate_index(pos) if self.candidate_bboxes else None
+            if candidate_idx is not None:
+                if candidate_idx != self.hover_candidate_index:
+                    self.hover_candidate_index = candidate_idx
+                    self._update_display()
+                self.setCursor(Qt.CursorShape.PointingHandCursor)
+            else:
+                if self.hover_candidate_index is not None:
+                    self.hover_candidate_index = None
+                    self._update_display()
+                resize_mode = self._get_resize_mode(pos)
+                self._update_cursor(resize_mode)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         """Handle mouse release - finalize drawing or editing"""
@@ -429,6 +515,37 @@ class BboxEditor(QLabel):
             y = max(0, min(y, frame_h - h))
 
         self.bbox = (x, y, w, h)
+
+    def _get_candidate_index(self, pos: QPoint) -> Optional[int]:
+        """Return index of candidate bbox under cursor (if any)"""
+        if not self.candidate_bboxes or self.scale_factor == 0:
+            return None
+
+        px = pos.x()
+        py = pos.y()
+
+        for idx, candidate in enumerate(self.candidate_bboxes):
+            x, y, w, h = candidate[:4]
+            sx = int(x * self.scale_factor) + self.display_offset.x()
+            sy = int(y * self.scale_factor) + self.display_offset.y()
+            sw = int(w * self.scale_factor)
+            sh = int(h * self.scale_factor)
+
+            if sx <= px <= sx + sw and sy <= py <= sy + sh:
+                return idx
+        return None
+
+    def set_candidate_bboxes(self, candidates: List[Tuple[int, int, int, int, float]]):
+        """Show auto-detected bboxes for quick selection"""
+        self.candidate_bboxes = candidates or []
+        self.hover_candidate_index = None
+        self._update_display()
+
+    def clear_candidate_bboxes(self):
+        """Hide auto-detected candidates"""
+        self.candidate_bboxes = []
+        self.hover_candidate_index = None
+        self._update_display()
 
     def keyPressEvent(self, event):
         """Handle keyboard shortcuts"""

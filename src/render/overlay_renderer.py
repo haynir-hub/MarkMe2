@@ -37,7 +37,9 @@ class OverlayRenderer:
             frame: Frame to draw on (BGR format)
             bbox: Bounding box (x, y, width, height)
             marker_style: Style ('arrow', 'circle', 'rectangle', 'spotlight', 'outline',
-                          'neon_ring', 'pulse', 'gradient', 'dynamic_arrow', 'hexagon', 'crosshair')
+                          'neon_ring', 'pulse', 'gradient', 'nba_iso_ring',
+                          'tactical_brackets', 'sonar_ripple', 'floating_chevron',
+                          'dynamic_arrow', 'hexagon', 'crosshair')
             color: BGR color tuple
             player: Player object (optional, for accessing original_bbox)
 
@@ -76,6 +78,14 @@ class OverlayRenderer:
             color1 = (255, 0, 200)  # Purple
             color2 = (200, 0, 255)  # Purple variant
             return self.modern_styles.draw_gradient_ring(frame, bbox, color1, color2, self.frame_count, player)
+        elif marker_style == 'nba_iso_ring':
+            return self.modern_styles.draw_nba_iso_ring(frame, bbox, color, self.frame_count, player)
+        elif marker_style == 'tactical_brackets':
+            return self.modern_styles.draw_tactical_brackets(frame, bbox, color, self.frame_count, player)
+        elif marker_style == 'sonar_ripple':
+            return self.modern_styles.draw_sonar_ripple(frame, bbox, color, self.frame_count, player)
+        elif marker_style == 'floating_chevron':
+            return self.modern_styles.draw_floating_chevron(frame, bbox, color, self.frame_count, player)
         elif marker_style == 'dynamic_arrow':
             # Bright cyan for high visibility
             cyan_color = (255, 255, 0)  # Bright yellow-cyan
@@ -484,5 +494,3 @@ class OverlayRenderer:
             )
 
         return result_frame
-
-

@@ -20,6 +20,105 @@ class VideoExporter:
         self.tracker_manager = tracker_manager
         self.overlay_renderer = OverlayRenderer()
         self.temp_dir = None
+
+    def export_tracked_video(self, original_video_path: str, tracking_data: dict,
+                             output_path: str,
+                             progress_callback=None,
+                             tracking_start_frame: Optional[int] = None,
+                             tracking_end_frame: Optional[int] = None) -> bool:
+        """
+        Render a tracked video from raw tracking_data and mux audio from the original.
+        tracking_data format: {player_id: {frame_idx: {'bbox': (x,y,w,h) or None, ...}}}
+        """
+        try:
+            cap = cv2.VideoCapture(original_video_path)
+            if not cap.isOpened():
+                print("❌ ERROR: Could not open source video for export.")
+                return False
+
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+
+            if width <= 0 or height <= 0 or total_frames <= 0:
+                print(f"❌ Invalid video properties: frames={total_frames}, size={width}x{height}")
+                cap.release()
+                return False
+
+            # Prepare temp file for video without audio
+            self.temp_dir = tempfile.mkdtemp()
+            temp_video = os.path.join(self.temp_dir, 'tracked_no_audio.mp4')
+
+            # Prefer H.264 then fallback
+            fourcc = cv2.VideoWriter_fourcc(*'H264')
+            writer = cv2.VideoWriter(temp_video, fourcc, fps, (width, height))
+            if not writer.isOpened():
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                writer = cv2.VideoWriter(temp_video, fourcc, fps, (width, height))
+
+            if not writer.isOpened():
+                print("❌ ERROR: Could not open VideoWriter for tracked export.")
+                cap.release()
+                return False
+
+            players = self.tracker_manager.get_all_players()
+
+            frame_idx = 0
+            frames_written = 0
+            while True:
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    break
+
+                if progress_callback and total_frames > 0:
+                    progress_callback(frame_idx + 1, total_frames)
+
+                # Update each player's current bbox from tracking_data
+                for player in players:
+                    frame_data = tracking_data.get(player.player_id, {}).get(frame_idx)
+                    bbox = None
+                    if frame_data:
+                        bbox = frame_data.get('bbox')
+
+                    player.current_bbox = bbox
+                    if bbox is not None and hasattr(player, 'padding_offset') and player.padding_offset != (0, 0, 0, 0):
+                        x, y, w, h = bbox
+                        offset_x, offset_y, offset_w, offset_h = player.padding_offset
+                        player.current_original_bbox = (x + offset_x, y + offset_y, w - offset_w, h - offset_h)
+                    else:
+                        player.current_original_bbox = bbox
+
+                frame_with_overlay = self.overlay_renderer.draw_all_markers(
+                    frame,
+                    players,
+                    frame_idx=frame_idx,
+                    tracking_start_frame=tracking_start_frame,
+                    tracking_end_frame=tracking_end_frame
+                )
+
+                writer.write(frame_with_overlay)
+                frames_written += 1
+                frame_idx += 1
+
+            cap.release()
+            writer.release()
+
+            if frames_written == 0:
+                print("❌ ERROR: No frames written during tracked export.")
+                self._cleanup_temp_files()
+                return False
+
+            # Mux original audio back
+            success = self._add_audio_with_ffmpeg(original_video_path, temp_video, output_path)
+            self._cleanup_temp_files()
+            return success
+
+        except Exception as e:
+            print(f"Error in export_tracked_video: {e}")
+            traceback.print_exc()
+            self._cleanup_temp_files()
+            return False
     
     def export_video(self, input_path: str, output_path: str,
                     progress_callback=None,
@@ -386,4 +485,3 @@ class VideoExporter:
                 shutil.rmtree(self.temp_dir)
             except Exception as e:
                 print(f"Error cleaning up temp files: {e}")
-

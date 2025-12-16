@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QFileDialog, QListWidget,
                              QListWidgetItem, QProgressBar, QMessageBox,
                              QGroupBox, QSizePolicy, QDialog, QSlider,
-                             QSpinBox, QLineEdit, QApplication)
+                             QSpinBox, QLineEdit, QComboBox, QApplication, QScrollArea)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor, QKeySequence, QShortcut
 from typing import Optional, Tuple
@@ -24,6 +24,37 @@ from .video_canvas import VideoCanvas
 from .player_selector import PlayerSelector
 from .preview_dialog import PreviewDialog
 from .batch_preview_dialog import BatchPreviewDialog
+
+
+class CollapsibleSection(QWidget):
+    """Simple collapsible section with chevron toggle"""
+    def __init__(self, title: str, content: QWidget, default_open: bool = True):
+        super().__init__()
+        self.content = content
+        self.toggle_btn = QPushButton()
+        self.toggle_btn.setObjectName("sectionToggle")
+        self.toggle_btn.setCheckable(True)
+        self.toggle_btn.setChecked(default_open)
+        self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._title = title
+        self._update_title()
+        self.toggle_btn.clicked.connect(self._on_toggled)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(self.toggle_btn)
+        layout.addWidget(self.content)
+        self.setLayout(layout)
+        self.content.setVisible(default_open)
+
+    def _update_title(self):
+        chevron = "▼" if self.toggle_btn.isChecked() else "▶"
+        self.toggle_btn.setText(f"{chevron}  {self._title}")
+
+    def _on_toggled(self, checked: bool):
+        self.content.setVisible(checked)
+        self._update_title()
 
 
 class ExportThread(QThread):
@@ -421,6 +452,7 @@ class MainWindow(QMainWindow):
         
         # UI Setup
         self._setup_ui()
+        self._apply_modern_theme()
         
         # Setup keyboard shortcuts for frame navigation
         self._setup_keyboard_shortcuts()
@@ -439,122 +471,302 @@ class MainWindow(QMainWindow):
         
         # Left panel - Controls
         left_panel = self._create_left_panel()
-        main_layout.addWidget(left_panel, 1)
+        self._apply_sidebar_constraints(left_panel)
+
+        # Wrap sidebar in scroll area to avoid squashing
+        sidebar_scroll = QScrollArea()
+        sidebar_scroll.setWidgetResizable(True)
+        sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        sidebar_scroll.setWidget(left_panel)
+        sidebar_scroll.setMinimumWidth(320)
+        sidebar_scroll.setMaximumWidth(380)
+        main_layout.addWidget(sidebar_scroll, 0)
         
         # Right panel - Video preview
         right_panel = self._create_right_panel()
         main_layout.addWidget(right_panel, 3)
+
+    def _apply_modern_theme(self):
+        """Apply modern dark professional stylesheet"""
+        qss = """
+        * {
+            font-family: "Segoe UI", "SF Pro Display", "Inter", sans-serif;
+            color: #E0E0E0;
+            font-size: 13px;
+        }
+        QWidget {
+            background-color: #1a1c1f;
+            color: #E0E0E0;
+        }
+        QLabel {
+            color: #AAAAAA;
+            font-size: 13px;
+        }
+        QGroupBox {
+            border: 1px solid #2a2e34;
+            border-radius: 6px;
+            margin-top: 8px;
+            padding: 10px 10px 12px 10px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 8px;
+            padding: 0 4px;
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+
+        QPushButton {
+            background-color: #2b2f34;
+            border: 1px solid #3a3f46;
+            border-radius: 6px;
+            padding: 7px 10px;
+            color: #f5f5f5;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        QPushButton:hover {
+            background-color: #343941;
+            border-color: #4a515b;
+        }
+        QPushButton:pressed {
+            background-color: #25282d;
+            border-color: #3a3f46;
+        }
+        QPushButton:disabled {
+            background-color: #1f2226;
+            border: 1px solid #2a2f35;
+            color: #6c747d;
+        }
+
+        QPushButton#startTrackingBtn,
+        QPushButton#exportBtn {
+            background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3f8cff, stop:1 #2d6fde);
+            border: 1px solid #2b63c2;
+            border-radius: 6px;
+            padding: 9px 12px;
+            color: #ffffff;
+            font-weight: 700;
+        }
+        QPushButton#startTrackingBtn:hover,
+        QPushButton#exportBtn:hover {
+            background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4c98ff, stop:1 #2f78e8);
+        }
+        QPushButton#startTrackingBtn:pressed,
+        QPushButton#exportBtn:pressed {
+            background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #357be0, stop:1 #275fb6);
+        }
+
+        QPushButton#sectionToggle {
+            background-color: transparent;
+            border: none;
+            text-align: left;
+            padding: 6px 8px;
+            font-weight: 700;
+            color: #cfd3d8;
+        }
+        QPushButton#sectionToggle:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        QPushButton#addBtn,
+        QPushButton#removeBtn,
+        QPushButton#sidebarAction {
+            background-color: transparent;
+            border: 1px solid #3a3f46;
+            color: #d0d4db;
+        }
+        QPushButton#addBtn:hover,
+        QPushButton#removeBtn:hover,
+        QPushButton#sidebarAction:hover {
+            background-color: rgba(255, 255, 255, 0.04);
+            border-color: #4a515b;
+        }
+
+        QWidget#playbackBar {
+            background-color: #1f2125;
+            border: 1px solid #2c3036;
+            border-radius: 6px;
+            padding: 4px;
+        }
+        QWidget#playbackBar QPushButton {
+            background-color: #262a2f;
+            border: 1px solid #333941;
+            border-radius: 4px;
+            padding: 8px 10px;
+            min-width: 56px;
+            color: #f0f2f5;
+            font-weight: 600;
+        }
+        QWidget#playbackBar QPushButton:hover {
+            background-color: #2f343c;
+            border-color: #3f4550;
+        }
+        QWidget#playbackBar QPushButton:pressed {
+            background-color: #24282e;
+        }
+
+        QLineEdit, QComboBox, QSpinBox, QTextEdit, QPlainTextEdit {
+            background-color: #2A2A2A;
+            border: 1px solid #444444;
+            border-radius: 6px;
+            padding: 7px 8px;
+            color: #FFFFFF;
+        }
+        QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTextEdit:focus, QPlainTextEdit:focus {
+            border: 1px solid #3f8cff;
+        }
+        QLineEdit::placeholder, QComboBox::placeholder, QSpinBox::placeholder, QTextEdit[placeholderText]:empty, QPlainTextEdit[placeholderText]:empty {
+            color: #888888;
+        }
+
+        QListWidget, QTreeWidget, QTableWidget {
+            background-color: #1c1f23;
+            border: 1px solid #2a2e34;
+            border-radius: 6px;
+            selection-background-color: #2f3640;
+            selection-color: #f5f7fb;
+        }
+
+        QProgressBar {
+            border: 1px solid #2a2e34;
+            border-radius: 6px;
+            background-color: #1c1f23;
+            text-align: center;
+            padding: 2px;
+            color: #e8e8e8;
+        }
+        QProgressBar::chunk {
+            background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3f8cff, stop:1 #2d6fde);
+            border-radius: 4px;
+        }
+        """
+        self.setStyleSheet(qss)
+
+    def _apply_sidebar_constraints(self, sidebar: QWidget):
+        """Ensure sidebar contents keep size and can scroll on short windows"""
+        for widget in sidebar.findChildren((QPushButton, QLineEdit, QComboBox, QSpinBox)):
+            widget.setMinimumHeight(40)
+            widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     
     def _create_left_panel(self) -> QWidget:
         """Create left control panel with video list for batch processing"""
         panel = QWidget()
-        panel.setMaximumWidth(350)
+        panel.setMinimumWidth(320)
+        panel.setMaximumWidth(380)
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
         
-        # Videos List (NEW!)
-        videos_group = QGroupBox("📹 Video List")
+        # Videos List (collapsed by default)
+        videos_content = QWidget()
         videos_layout = QVBoxLayout()
+        videos_layout.setSpacing(8)
+        videos_layout.setContentsMargins(6, 6, 6, 6)
         
         self.videos_list = QListWidget()
         self.videos_list.itemClicked.connect(self._on_video_selected)
         videos_layout.addWidget(self.videos_list)
         
-        # Video control buttons
         video_buttons_layout = QHBoxLayout()
+        video_buttons_layout.setSpacing(6)
         self.add_videos_btn = QPushButton("➕ Add Videos")
+        self.add_videos_btn.setObjectName("addBtn")
         self.add_videos_btn.clicked.connect(self._add_videos)
         video_buttons_layout.addWidget(self.add_videos_btn)
         
         self.remove_video_btn = QPushButton("➖ Remove")
+        self.remove_video_btn.setObjectName("removeBtn")
         self.remove_video_btn.clicked.connect(self._remove_video)
         self.remove_video_btn.setEnabled(False)
         video_buttons_layout.addWidget(self.remove_video_btn)
         
         videos_layout.addLayout(video_buttons_layout)
         
-        # Video info label
         self.video_info_label = QLabel("No videos loaded")
         self.video_info_label.setWordWrap(True)
-        self.video_info_label.setStyleSheet("font-size: 10px; color: gray;")
+        self.video_info_label.setStyleSheet("font-size: 12px; color: gray;")
         videos_layout.addWidget(self.video_info_label)
+        videos_layout.addStretch()
+        videos_content.setLayout(videos_layout)
+        layout.addWidget(CollapsibleSection("📹 Video List", videos_content, default_open=False))
         
-        videos_group.setLayout(videos_layout)
-        layout.addWidget(videos_group)
-        
-        # Players for current video
-        players_group = QGroupBox("👥 Players (Current Video)")
+        # Players for current video (open)
+        players_content = QWidget()
         players_layout = QVBoxLayout()
+        players_layout.setSpacing(8)
+        players_layout.setContentsMargins(6, 6, 6, 6)
         
         self.players_list = QListWidget()
         self.players_list.itemClicked.connect(self._on_player_selected)
         players_layout.addWidget(self.players_list)
         
         player_buttons_layout = QHBoxLayout()
+        player_buttons_layout.setSpacing(6)
         self.add_player_btn = QPushButton("➕ Add Marker")
+        self.add_player_btn.setObjectName("sidebarAction")
         self.add_player_btn.clicked.connect(self._add_player_marker)
         self.add_player_btn.setEnabled(False)
         player_buttons_layout.addWidget(self.add_player_btn)
         
         self.remove_player_btn = QPushButton("➖ Remove")
+        self.remove_player_btn.setObjectName("sidebarAction")
         self.remove_player_btn.clicked.connect(self._remove_player)
         self.remove_player_btn.setEnabled(False)
         player_buttons_layout.addWidget(self.remove_player_btn)
         
         players_layout.addLayout(player_buttons_layout)
-        players_group.setLayout(players_layout)
-        layout.addWidget(players_group)
+        players_layout.addStretch()
+        players_content.setLayout(players_layout)
+        layout.addWidget(CollapsibleSection("👥 Players (Current Video)", players_content, default_open=True))
         
-        # Tracking Section
-        tracking_group = QGroupBox("🎯 Tracking")
+        # Tracking Section (open)
+        tracking_content = QWidget()
         tracking_layout = QVBoxLayout()
+        tracking_layout.setSpacing(8)
+        tracking_layout.setContentsMargins(6, 6, 6, 6)
         
         self.track_all_btn = QPushButton("▶ Start Tracking All Videos")
+        self.track_all_btn.setObjectName("startTrackingBtn")
         self.track_all_btn.clicked.connect(self._track_all_videos)
         self.track_all_btn.setEnabled(False)
-        self.track_all_btn.setStyleSheet("QPushButton { background-color: #2196F3; color: white; font-weight: bold; padding: 8px; }")
         self.track_all_btn.setToolTip("Track all videos with markers before export")
         tracking_layout.addWidget(self.track_all_btn)
+        tracking_content.setLayout(tracking_layout)
+        layout.addWidget(CollapsibleSection("🎯 Tracking", tracking_content, default_open=True))
         
-        # track_single_btn removed - tracking happens automatically during export
-        
-        tracking_group.setLayout(tracking_layout)
-        layout.addWidget(tracking_group)
-        
-        # Tracking Range Section (NEW!)
-        tracking_range_group = QGroupBox("🎯 Tracking Range")
+        # Tracking Range Section (open)
+        tracking_range_content = QWidget()
         tracking_range_layout = QVBoxLayout()
+        tracking_range_layout.setSpacing(8)
+        tracking_range_layout.setContentsMargins(6, 6, 6, 6)
         
         tracking_range_info_layout = QHBoxLayout()
         self.tracking_range_info_label = QLabel("Tracking: Full video")
         self.tracking_range_info_label.setWordWrap(True)
-        self.tracking_range_info_label.setStyleSheet("font-size: 10px; color: gray;")
+        self.tracking_range_info_label.setStyleSheet("font-size: 12px; color: gray;")
         tracking_range_info_layout.addWidget(self.tracking_range_info_label)
         tracking_range_layout.addLayout(tracking_range_info_layout)
         
-        # Start frame buttons
-        start_buttons_layout = QHBoxLayout()
-        start_buttons_layout.addWidget(QLabel("Start:"))
-        self.set_tracking_start_btn = QPushButton("📍 Set Start")
+        # Start/End on same row
+        start_end_row = QHBoxLayout()
+        start_end_row.setSpacing(8)
+        self.set_tracking_start_btn = QPushButton("📍 Start")
         self.set_tracking_start_btn.clicked.connect(self._set_tracking_start)
         self.set_tracking_start_btn.setEnabled(False)
         self.set_tracking_start_btn.setToolTip("Set frame where tracking should start (current frame). Video will play from beginning, but tracking markers will appear only from this frame.")
-        start_buttons_layout.addWidget(self.set_tracking_start_btn)
-        start_buttons_layout.addStretch()
-        tracking_range_layout.addLayout(start_buttons_layout)
+        start_end_row.addWidget(self.set_tracking_start_btn)
         
-        # End frame buttons
-        end_buttons_layout = QHBoxLayout()
-        end_buttons_layout.addWidget(QLabel("End:"))
-        self.set_tracking_end_btn = QPushButton("📍 Set End")
+        self.set_tracking_end_btn = QPushButton("📍 End")
         self.set_tracking_end_btn.clicked.connect(self._set_tracking_end)
         self.set_tracking_end_btn.setEnabled(False)
         self.set_tracking_end_btn.setToolTip("Set frame where tracking should end (current frame). From this frame to the end, there will be no tracking markers.")
-        end_buttons_layout.addWidget(self.set_tracking_end_btn)
-        end_buttons_layout.addStretch()
-        tracking_range_layout.addLayout(end_buttons_layout)
+        start_end_row.addWidget(self.set_tracking_end_btn)
+        tracking_range_layout.addLayout(start_end_row)
         
         # Clear button
         clear_buttons_layout = QHBoxLayout()
+        clear_buttons_layout.setSpacing(8)
         self.clear_tracking_range_btn = QPushButton("🗑️ Clear All")
         self.clear_tracking_range_btn.clicked.connect(self._clear_tracking_range)
         self.clear_tracking_range_btn.setEnabled(False)
@@ -562,20 +774,23 @@ class MainWindow(QMainWindow):
         clear_buttons_layout.addWidget(self.clear_tracking_range_btn)
         tracking_range_layout.addLayout(clear_buttons_layout)
         
-        tracking_range_group.setLayout(tracking_range_layout)
-        layout.addWidget(tracking_range_group)
+        tracking_range_content.setLayout(tracking_range_layout)
+        layout.addWidget(CollapsibleSection("🎯 Tracking Range", tracking_range_content, default_open=True))
         
-        # Batch Export (NEW!)
-        export_group = QGroupBox("🎬 Export")
+        # Batch Export (collapsed by default)
+        export_content = QWidget()
         export_layout = QVBoxLayout()
+        export_layout.setSpacing(8)
+        export_layout.setContentsMargins(6, 6, 6, 6)
         
         self.export_all_btn = QPushButton("📤 Export All Videos")
+        self.export_all_btn.setObjectName("exportBtn")
         self.export_all_btn.clicked.connect(self._batch_export)
         self.export_all_btn.setEnabled(False)
-        self.export_all_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; padding: 8px; }")
         export_layout.addWidget(self.export_all_btn)
         
         self.export_single_btn = QPushButton("📤 Export Current Video")
+        self.export_single_btn.setObjectName("exportBtn")
         self.export_single_btn.clicked.connect(self._export_single)
         self.export_single_btn.setEnabled(False)
         export_layout.addWidget(self.export_single_btn)
@@ -583,7 +798,6 @@ class MainWindow(QMainWindow):
         self.cancel_export_btn = QPushButton("❌ Cancel Export")
         self.cancel_export_btn.clicked.connect(self._cancel_export)
         self.cancel_export_btn.setEnabled(False)
-        self.cancel_export_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; padding: 6px; }")
         self.cancel_export_btn.setVisible(False)
         export_layout.addWidget(self.cancel_export_btn)
         
@@ -596,8 +810,8 @@ class MainWindow(QMainWindow):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         export_layout.addWidget(self.status_label)
         
-        export_group.setLayout(export_layout)
-        layout.addWidget(export_group)
+        export_content.setLayout(export_layout)
+        layout.addWidget(CollapsibleSection("🎬 Export", export_content, default_open=False))
         
         layout.addStretch()
         panel.setLayout(layout)
@@ -629,8 +843,13 @@ class MainWindow(QMainWindow):
         slider_row.addWidget(self.frame_slider)
         frame_controls.addLayout(slider_row)
         
-        # Middle row: Frame number input and navigation buttons
+        # Middle row: Frame number input and navigation buttons (toolbar style)
+        playback_bar = QWidget()
+        playback_bar.setObjectName("playbackBar")
         nav_row = QHBoxLayout()
+        nav_row.setContentsMargins(6, 6, 6, 6)
+        nav_row.setSpacing(6)
+        playback_bar.setLayout(nav_row)
         
         # Jump buttons
         self.jump_back_100_btn = QPushButton("⏪ -100")
@@ -686,7 +905,7 @@ class MainWindow(QMainWindow):
         self.jump_forward_100_btn.setToolTip("Jump forward 100 frames (Ctrl+Right)")
         nav_row.addWidget(self.jump_forward_100_btn)
         
-        frame_controls.addLayout(nav_row)
+        frame_controls.addWidget(playback_bar)
         
         # Bottom row: Fullscreen button
         bottom_row = QHBoxLayout()
@@ -1725,16 +1944,12 @@ class MainWindow(QMainWindow):
         detections = self.person_detector.detect_people(current_frame, confidence_threshold=0.25)
         
         if not detections:
-            QMessageBox.information(
-                self,
-                "No People Detected",
-                "No people were detected in this frame.\n\n"
-                "Try:\n"
-                "- Moving to a different frame\n"
-                "- Using manual selection instead"
-            )
-            self.status_label.setText("Ready")
-            self.status_label.setStyleSheet("")
+            self.status_label.setText("No people detected. Try another frame or draw manually.")
+            self.status_label.setStyleSheet("color: orange;")
+            try:
+                self.statusBar().showMessage("No people detected in this frame. Try a different frame or draw manually.", 4000)
+            except Exception:
+                pass
             return
         
         # Show detected people on canvas
@@ -1742,8 +1957,13 @@ class MainWindow(QMainWindow):
         self.video_canvas.enable_detection_mode(True)
         
         # Update status
-        self.status_label.setText(f"✅ Found {len(detections)} person(s). Click on a person to select them.")
+        num_detected = len(detections)
+        self.status_label.setText(f"✅ Found {num_detected} person(s). Click on a person to select them.")
         self.status_label.setStyleSheet("color: green;")
+        try:
+            self.statusBar().showMessage(f"🔍 System detected {num_detected} players. Click a player or draw a box.", 4000)
+        except Exception:
+            pass
         self._waiting_for_bbox = True
     
     def _on_person_clicked(self, x: int, y: int, w: int, h: int):
@@ -2907,4 +3127,3 @@ class MainWindow(QMainWindow):
         # Release all projects
         self.project_manager.clear_all()
         event.accept()
-

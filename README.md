@@ -111,6 +111,23 @@ pip install opencv-contrib-python>=4.8.0
 - נסה להשתמש ב-CSRT tracker (ברירת מחדל)
 - ודא שהתאורה בסרטון טובה
 
+## פיתוח ושיתוף פעולה
+
+### גישה לענפים (Branches)
+
+הפרויקט כולל מספר ענפים לפיתוח:
+- **main** - ענף ראשי
+- **feature/two-phase-tracking** - מעקב דו-שלבי
+- **copilot/create-url-association-branch** - שיפורים נוספים
+
+למידע מלא על עבודה עם ענפים, ראה [BRANCH_ACCESS.md](BRANCH_ACCESS.md)
+
+### URLs for Branch Access
+
+- Repository: https://github.com/haynir-hub/MarkMe2
+- Main Branch: https://github.com/haynir-hub/MarkMe2/tree/main
+- Feature Branch: https://github.com/haynir-hub/MarkMe2/tree/feature/two-phase-tracking
+
 ## רישיון
 
 תוכנה זו נוצרה לשימוש מקומי בלבד.
